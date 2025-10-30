@@ -1,0 +1,48 @@
+{
+  "name": "audit-portal",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^5.2.6",
+    "@ant-design/plots": "^2.2.4",
+    "@ant-design/pro-components": "^2.6.5",
+    "@antv/g6": "^5.0.12",
+    "@antv/s2": "^2.1.1",
+    "@antv/s2-react": "^2.1.1",
+    "@tanstack/react-query": "^5.20.3",
+    "antd": "^5.13.2",
+    "classnames": "^2.5.1",
+    "dayjs": "^1.11.10",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.22.2",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@storybook/addon-a11y": "^8.0.3",
+    "@storybook/addon-essentials": "^8.0.3",
+    "@storybook/addon-interactions": "^8.0.3",
+    "@storybook/react-vite": "^8.0.3",
+    "@storybook/testing-library": "^0.2.2",
+    "@testing-library/jest-dom": "^6.4.2",
+    "@testing-library/react": "^14.2.2",
+    "less": "^4.2.0",
+    "@types/node": "^20.11.24",
+    "@types/react": "^18.2.69",
+    "@types/react-dom": "^18.2.21",
+    "@vitejs/plugin-react-swc": "^3.5.0",
+    "jsdom": "^22.1.0",
+    "storybook": "^8.0.3",
+    "typescript": "^5.4.5",
+    "vite": "^5.1.6",
+    "vitest": "^1.4.0"
+  }
+}
