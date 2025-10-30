@@ -1,9 +1,23 @@
 import { auditReportSchema, type AuditReport } from '@types/report';
 
+const ABSOLUTE_URL_PATTERN = /^https?:\/\//i;
+
+function resolveRelativeUrl(path: string): string {
+  if (ABSOLUTE_URL_PATTERN.test(path)) {
+    return path;
+  }
+
+  const base = import.meta.env.BASE_URL ?? '/';
+  const normalizedBase = base.endsWith('/') ? base : `${base}/`;
+  const normalizedPath = path.replace(/^\//, '');
+  return `${normalizedBase}${normalizedPath}`;
+}
+
 export async function loadReportFromUrl(url: string): Promise<AuditReport> {
-  const res = await fetch(url);
+  const resolvedUrl = resolveRelativeUrl(url);
+  const res = await fetch(resolvedUrl);
   if (!res.ok) {
-    throw new Error(`Failed to load report from ${url}: ${res.statusText}`);
+    throw new Error(`Failed to load report from ${resolvedUrl}: ${res.statusText}`);
   }
   const json = await res.json();
   return auditReportSchema.parse(json);

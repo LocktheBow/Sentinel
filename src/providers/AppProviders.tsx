@@ -8,8 +8,10 @@ import { ReportProvider } from '@/features/report/ReportProvider';
 const queryClient = new QueryClient();
 
 export function AppProviders({ children }: PropsWithChildren) {
+  const basename = import.meta.env.BASE_URL ?? '/';
+
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <QueryClientProvider client={queryClient}>
         <ConfigProvider theme={appTheme}>
           <ReportProvider>{children}</ReportProvider>

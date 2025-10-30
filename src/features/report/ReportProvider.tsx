@@ -19,7 +19,7 @@ export function ReportProvider({ children }: PropsWithChildren) {
     error
   } = useQuery({
     queryKey: ['audit-report-default'],
-    queryFn: () => loadReportFromUrl('/sentinel_report.json')
+    queryFn: () => loadReportFromUrl('sentinel_report.json')
   });
 
   const contextValue = useMemo<ReportContextValue>(
