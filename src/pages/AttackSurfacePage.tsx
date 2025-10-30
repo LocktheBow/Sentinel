@@ -18,7 +18,7 @@ export function AttackSurfacePage() {
   return (
     <Space direction="vertical" size={24} style={{ width: '100%' }}>
       <Alert
-        message="Click any node to open evidence. Scroll or use the +/− buttons to zoom, and drag to pan the attack surface map."
+        message="Click any node to open evidence. Scroll to zoom; drag empty space or use the right mouse button to pan the attack surface map."
         type="info"
         showIcon
       />

@@ -58,6 +58,9 @@ const clamp = (value: number, min: number, max: number) => {
   return Math.min(Math.max(value, min), max);
 };
 
+const getNodeTarget = (target: EventTarget | null) =>
+  target instanceof Element ? target.closest('[data-node-id]') : null;
+
 function normalize(text: string) {
   return text.trim().toLowerCase();
 }
@@ -247,6 +250,7 @@ export function AttackGraph({ report, onSelect, height }: AttackGraphProps) {
         pointerY: number;
         width: number;
         height: number;
+        button: number;
       }
     | null
   >(null);
@@ -292,7 +296,26 @@ export function AttackGraph({ report, onSelect, height }: AttackGraphProps) {
     });
   };
 
+  const handleWheel = (event: ReactWheelEvent<SVGSVGElement>) => {
+    event.preventDefault();
+    const factor = event.deltaY > 0 ? 1.1 : 0.9;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const focusX = viewBox.x + ((event.clientX - rect.left) / rect.width) * viewBox.width;
+    const focusY = viewBox.y + ((event.clientY - rect.top) / rect.height) * viewBox.height;
+    applyZoom(factor, { x: focusX, y: focusY });
+  };
+
   const handlePointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const targetNode = getNodeTarget(event.target);
+    const isPrimary = event.button === 0;
+    const wantsPan = event.button === 1 || event.button === 2 || (!targetNode && isPrimary);
+
+    if (!wantsPan) {
+      pointerSnapshot.current = null;
+      setIsPanning(false);
+      return;
+    }
+
     event.preventDefault();
     pointerSnapshot.current = {
       pointerId: event.pointerId,
@@ -301,15 +324,17 @@ export function AttackGraph({ report, onSelect, height }: AttackGraphProps) {
       pointerX: event.clientX,
       pointerY: event.clientY,
       width: viewBox.width,
-      height: viewBox.height
+      height: viewBox.height,
+      button: event.button
     };
     setIsPanning(true);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (!pointerSnapshot.current) return;
     const snapshot = pointerSnapshot.current;
+    if (!snapshot) return;
+
     const scaleX = snapshot.width / event.currentTarget.clientWidth;
     const scaleY = snapshot.height / event.currentTarget.clientHeight;
     const dx = (event.clientX - snapshot.pointerX) * scaleX;
@@ -320,9 +345,19 @@ export function AttackGraph({ report, onSelect, height }: AttackGraphProps) {
   };
 
   const releasePointer = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (pointerSnapshot.current && event.currentTarget.hasPointerCapture(pointerSnapshot.current.pointerId)) {
-      event.currentTarget.releasePointerCapture(pointerSnapshot.current.pointerId);
+    const snapshot = pointerSnapshot.current;
+    if (snapshot && event.pointerId === snapshot.pointerId && event.currentTarget.hasPointerCapture(snapshot.pointerId)) {
+      event.currentTarget.releasePointerCapture(snapshot.pointerId);
     }
+
+    if (snapshot && snapshot.button === 0) {
+      const dx = Math.abs(event.clientX - snapshot.pointerX);
+      const dy = Math.abs(event.clientY - snapshot.pointerY);
+      if (dx < 4 && dy < 4) {
+        clearSelection();
+      }
+    }
+
     pointerSnapshot.current = null;
     setIsPanning(false);
   };
@@ -510,11 +545,3 @@ export function AttackGraph({ report, onSelect, height }: AttackGraphProps) {
     </Card>
   );
 }
-  const handleWheel = (event: ReactWheelEvent<SVGSVGElement>) => {
-    event.preventDefault();
-    const factor = event.deltaY > 0 ? 1.1 : 0.9;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const focusX = viewBox.x + ((event.clientX - rect.left) / rect.width) * viewBox.width;
-    const focusY = viewBox.y + ((event.clientY - rect.top) / rect.height) * viewBox.height;
-    applyZoom(factor, { x: focusX, y: focusY });
-  };
