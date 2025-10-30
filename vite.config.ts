@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react-swc';
 import path from 'node:path';
 
 export default defineConfig({
-  base: process.env.BASE_PATH ?? '/Sentinel/',
+  base: process.env.BASE_PATH || '/',
   plugins: [react()],
   resolve: {
     alias: {
