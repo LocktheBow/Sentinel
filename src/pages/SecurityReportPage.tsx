@@ -50,10 +50,17 @@ export function SecurityReportPage() {
           <Divider />
           <Title level={4}>What to do this week</Title>
           <ul style={{ color: '#f4f7ff', paddingLeft: 20 }}>
-            {descriptor.todo.map((task) => (
-              <li key={task.route}>
-                <Text strong>{task.label}</Text> — available at <code>{task.route}</code> (status: {task.done ? 'complete' : 'in progress'}).
-              </li>
+            {(descriptor.actionsThisWeek && descriptor.actionsThisWeek.length
+              ? descriptor.actionsThisWeek
+              : [
+                  'Ban Transparent + UUPS mixing. Enforce on-chain assertions that the ProxyAdmin owns the proxy before any mutator.',
+                  'Initialize with explicit addresses only. Never rely on msg.sender in initializers behind a proxy.',
+                  'Forbid changeAdmin(proxy) where proxy == newAdmin. Bake this guard into scripts and governance tooling.',
+                  'Default msg.value == 0 for upgrades. Only allow with explicit flags and a sweep procedure.',
+                  'Add a selector-collision CI check against the proxy admin surface.'
+                ]
+            ).map((item) => (
+              <li key={item}>{item}</li>
             ))}
           </ul>
           <Paragraph>
