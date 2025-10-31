@@ -1,0 +1,268 @@
+{
+  "security_score": 81,
+  "findings": [
+    {
+      "source": "cleaned",
+      "details": {
+        "description": "Admin self-assignment bricking via changeAdmin(address(this)): setting admin to the proxy address makes admin-only operations unreachable forever.",
+        "severity": "High",
+        "status": "Confirmed",
+        "blue_team_argument": "Add an explicit guard in ops scripts or subclass to forbid newAdmin == address(this). Use ProxyAdmin and validated tooling to rotate admin.",
+        "final_conclusion": "Operational footgun verified in OZ v4.8.3 Transparent; avoid setting admin to proxy's own address.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade"
+        ],
+        "economic_impact": "Permanent loss of upgrade control; inability to patch vulnerabilities or rotate admin.",
+        "evidence": [
+          {
+            "file": "TransparentUpgradeableProxy (5).sol",
+            "line_numbers": [146, 103]
+          },
+          {
+            "file": "ERC1967Upgrade (5).sol",
+            "line_numbers": [114]
+          }
+        ]
+      }
+    },
+    {
+      "source": "cleaned",
+      "details": {
+        "description": "ProxyAdmin mutators do not assert they are the current admin. If misconfigured, calls forward to the implementation via Transparent fallback, risking selector collisions or unintended behavior.",
+        "severity": "Medium",
+        "status": "Confirmed",
+        "blue_team_argument": "Pre-check admin with getProxyAdmin(proxy) or add guards in a custom ProxyAdmin. Keep implementations behind Transparent proxies free of UUPS selectors.",
+        "final_conclusion": "Legitimate configuration hazard; add pre-asserts and CI checks.",
+        "contracts_involved": [
+          "ProxyAdmin",
+          "TransparentUpgradeableProxy"
+        ],
+        "evidence": [
+          {
+            "file": "ProxyAdmin (5).sol",
+            "line_numbers": [51, 62, 74]
+          },
+          {
+            "file": "TransparentUpgradeableProxy (5).sol",
+            "line_numbers": [90]
+          }
+        ]
+      }
+    },
+    {
+      "source": "cleaned",
+      "details": {
+        "description": "BeaconProxy does not verify at runtime that the beacon's implementation has code. Delegating to an EOA/zero or self-destructed address reverts all calls.",
+        "severity": "High",
+        "status": "Confirmed",
+        "blue_team_argument": "Use UpgradeableBeacon for upgrade-time checks and forbid selfdestruct in logic. Monitor code size and upgrade rapidly on anomalies.",
+        "final_conclusion": "Recoverable by upgrading the beacon, but causes acute outages until fixed.",
+        "contracts_involved": [
+          "BeaconProxy",
+          "UpgradeableBeacon",
+          "Proxy"
+        ],
+        "evidence": [
+          {
+            "file": "BeaconProxy (5).sol",
+            "line_numbers": [44]
+          },
+          {
+            "file": "Proxy (5).sol",
+            "line_numbers": [58, 66, 73]
+          }
+        ]
+      }
+    },
+    {
+      "source": "cleaned",
+      "details": {
+        "description": "A malicious implementation behind a BeaconProxy can write directly to the EIP-1967 beacon slot in proxy storage during delegatecall, redirecting the proxy to an attacker-controlled beacon.",
+        "severity": "High",
+        "status": "Confirmed",
+        "blue_team_argument": "Audit implementations to never touch reserved EIP-1967 slots. Restrict UpgradeableBeacon ownership and add tests/invariants.",
+        "final_conclusion": "Design trust assumption: implementations run with proxy storage authority and can mutate reserved slots unless prevented.",
+        "contracts_involved": [
+          "BeaconProxy",
+          "UpgradeableBeacon",
+          "ERC1967Upgrade",
+          "Proxy"
+        ],
+        "evidence": [
+          {
+            "file": "Proxy (5).sol",
+            "line_numbers": [23]
+          },
+          {
+            "file": "ERC1967Upgrade (5).sol",
+            "line_numbers": [135]
+          }
+        ]
+      }
+    },
+    {
+      "source": "cleaned",
+      "details": {
+        "description": "upgradeToAndCall accepts msg.value; if the initializer doesn't sweep it, ETH remains on the proxy. The admin cannot later call implementation functions to recover due to the transparent admin gate.",
+        "severity": "Medium",
+        "status": "Confirmed",
+        "blue_team_argument": "Treat upgradeToAndCall as zero-value unless the initializer explicitly handles ETH. Provide public rescue paths callable by non-admin addresses if appropriate.",
+        "final_conclusion": "Verified sink vector requiring operational discipline.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade",
+          "Proxy"
+        ],
+        "evidence": [
+          {
+            "file": "TransparentUpgradeableProxy (5).sol",
+            "line_numbers": [172, 158, 103]
+          }
+        ]
+      }
+    },
+    {
+      "source": "cleaned",
+      "details": {
+        "description": "Admin address cannot reach implementation functions via the proxy. If runtime roles are assigned to the admin account, those functions become unreachable.",
+        "severity": "Informational",
+        "status": "Confirmed",
+        "blue_team_argument": "Keep upgrade admin and runtime governance/operator roles strictly separate.",
+        "final_conclusion": "By-design property; enforce role hygiene.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy"
+        ],
+        "evidence": [
+          {
+            "file": "TransparentUpgradeableProxy (5).sol",
+            "line_numbers": [103]
+          }
+        ]
+      }
+    },
+    {
+      "source": "cleaned",
+      "details": {
+        "description": "During construction, ERC1967Proxy delegates _data before TransparentUpgradeableProxy sets the admin. Initializers that read the EIP-1967 admin slot observe old/zero values.",
+        "severity": "Low",
+        "status": "Confirmed",
+        "blue_team_argument": "Avoid reading the proxy admin in initializers. Pass role addresses explicitly or initialize post-deploy via upgradeToAndCall.",
+        "final_conclusion": "Edge-case footgun; design initializers accordingly.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Proxy",
+          "ERC1967Upgrade"
+        ],
+        "evidence": [
+          {
+            "file": "TransparentUpgradeableProxy (5).sol",
+            "line_numbers": [63]
+          },
+          {
+            "file": "ERC1967Proxy (5).sol",
+            "line_numbers": [22]
+          }
+        ]
+      }
+    },
+    {
+      "source": "cleaned",
+      "details": {
+        "description": "Beacon upgrades are not atomic with initialization. If a new implementation expects a reinitializer and it's publicly callable, a third party can front-run and seize roles after the beacon upgrade.",
+        "severity": "Medium",
+        "status": "Confirmed",
+        "blue_team_argument": "Gate reinitializers beyond version guards, or restrict to a pre-recorded init-authority. Execute init immediately after upgrade via a bundler/relayer.",
+        "final_conclusion": "Requires careful upgrade choreography.",
+        "contracts_involved": [
+          "UpgradeableBeacon",
+          "BeaconProxy"
+        ],
+        "evidence": [
+          {
+            "file": "UpgradeableBeacon (5).sol",
+            "line_numbers": [49]
+          }
+        ]
+      }
+    },
+    {
+      "source": "cleaned",
+      "details": {
+        "description": "Transparent + UUPS mixed upgrade surface enables non-admin upgrades via the UUPS path.",
+        "severity": "High",
+        "status": "Not Applicable",
+        "blue_team_argument": "Do not deploy UUPS-enabled implementations behind Transparent proxies.",
+        "final_conclusion": "Not applicable to the provided codebase; no UUPSUpgradeable implementation present. Keep as a guardrail if future UUPS logic is introduced.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ProxyAdmin",
+          "Implementation (UUPS)"
+        ],
+        "evidence": [
+          {
+            "file": "draft-IERC1822 (5).sol",
+            "line_numbers": [10]
+          }
+        ]
+      }
+    },
+    {
+      "source": "cleaned",
+      "details": {
+        "description": "Subclassing TransparentUpgradeableProxy with external/public functions that collide with admin selectors can shadow admin ops.",
+        "severity": "Low",
+        "status": "Not Applicable",
+        "blue_team_argument": "Do not add externals to Transparent proxies; if you must, audit for selector collisions.",
+        "final_conclusion": "Not applicable; no subclassing present in the project.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy"
+        ],
+        "evidence": [
+          {
+            "file": "TransparentUpgradeableProxy (5).sol",
+            "line_numbers": [14]
+          }
+        ]
+      }
+    },
+    {
+      "source": "cleaned",
+      "details": {
+        "description": "CVE-2023-30541 (Transparent proxy selector clash) patched in OZ v4.8.3+.",
+        "severity": "Informational",
+        "status": "Not Applicable",
+        "blue_team_argument": "None required beyond staying on patched versions.",
+        "final_conclusion": "Not applicable; repository uses v4.8.3 for TransparentUpgradeableProxy.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy"
+        ],
+        "evidence": [
+          {
+            "file": "TransparentUpgradeableProxy (5).sol",
+            "line_numbers": [2]
+          }
+        ]
+      }
+    }
+  ],
+  "meta": {
+    "project_root": "/app/projects/cctp",
+    "files": [
+      "Address.sol",
+      "BeaconProxy.sol",
+      "Context.sol",
+      "ERC1967Proxy.sol",
+      "ERC1967Upgrade.sol",
+      "IBeacon.sol",
+      "IERC1967.sol",
+      "Ownable.sol",
+      "Proxy.sol",
+      "ProxyAdmin.sol",
+      "StorageSlot.sol",
+      "TransparentUpgradeableProxy.sol",
+      "UpgradeableBeacon.sol",
+      "draft-IERC1822.sol"
+    ]
+  }
+}

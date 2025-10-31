@@ -2,9 +2,11 @@ import { Card, Space, Statistic, Tag, Typography } from 'antd';
 import dayjs from 'dayjs';
 import { countBySeverity, severityOrder } from '@lib/metrics';
 import type { AuditReport, Severity } from '@types/report';
+import type { ReportDescriptor } from '@data/reportCatalog';
 
 type ReportSummaryCardProps = {
   report: AuditReport;
+  descriptor: ReportDescriptor;
 };
 
 const severityPalette: Record<Severity, string> = {
@@ -16,7 +18,7 @@ const severityPalette: Record<Severity, string> = {
   'N/A': '#768196'
 };
 
-export function ReportSummaryCard({ report }: ReportSummaryCardProps) {
+export function ReportSummaryCard({ report, descriptor }: ReportSummaryCardProps) {
   const generatedAt = report.meta?.generated_at;
   const generatedAtDisplay =
     typeof generatedAt === 'number'
@@ -30,12 +32,15 @@ export function ReportSummaryCard({ report }: ReportSummaryCardProps) {
   return (
     <Card style={{ background: '#141823', border: '1px solid rgba(255,255,255,0.08)' }}>
       <Typography.Title level={4} style={{ color: '#f4f7ff', marginBottom: 8 }}>
-        Dataset details
+        {descriptor.name}
       </Typography.Title>
       <Typography.Paragraph style={{ color: '#c8d1f5', marginBottom: 24 }}>
-        This portal renders the bundled `sentinel_report.json`. Future audits can be added by dropping additional JSON
-        reports into `public/` and wiring them into the data pipeline.
+        {descriptor.summary}
       </Typography.Paragraph>
+      <Space size={8} wrap style={{ marginBottom: 16 }}>
+        <Tag color="geekblue">{descriptor.chain}</Tag>
+        <Tag color="cyan">{descriptor.category}</Tag>
+      </Space>
       <Space size={24} wrap style={{ width: '100%' }}>
         <Statistic
           title="Security score"

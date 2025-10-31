@@ -6,7 +6,7 @@ import { countBySeverity } from '@lib/metrics';
 import { useReport } from '@/features/report/ReportProvider';
 
 export function ImpactPage() {
-  const { report } = useReport();
+  const { report, descriptor } = useReport();
 
   const remediationModel = useMemo(() => {
     if (!report) return null;
@@ -61,11 +61,11 @@ export function ImpactPage() {
           style={{ background: '#141823', border: '1px solid rgba(255,255,255,0.08)', overflow: 'visible' }}
         >
           <Typography.Title level={4} style={{ color: '#f4f7ff' }}>
-            Loss model Pareto
+            Loss model Pareto — {descriptor.shortName ?? descriptor.name}
           </Typography.Title>
           <Typography.Paragraph style={{ color: '#c8d1f5' }}>
-            Bars show the most damaging capabilities unlocked by hostile implementations; the line tracks cumulative risk
-            coverage. This grounds the narrative in quantifiable exposure.
+            Bars show the most damaging capabilities TRM realised against {descriptor.shortName ?? descriptor.name}; the line
+            tracks cumulative mitigation coverage as you land the listed controls.
           </Typography.Paragraph>
           <div style={{ background: '#141823', padding: '4px 0 16px', borderRadius: 12 }}>
             <ParetoChart report={report} />

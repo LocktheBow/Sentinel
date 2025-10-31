@@ -1,0 +1,286 @@
+{
+  "security_score": 11,
+  "meta": {
+    "project_root": "/app/projects/stargate",
+    "files": [
+      "Address.sol",
+      "BeaconProxy.sol",
+      "Context.sol",
+      "ERC1967Proxy.sol",
+      "ERC1967Upgrade.sol",
+      "IBeacon.sol",
+      "IERC1967.sol",
+      "Ownable.sol",
+      "Proxy.sol",
+      "ProxyAdmin.sol",
+      "StorageSlot.sol",
+      "TransparentUpgradeableProxy.sol",
+      "UpgradeableBeacon.sol",
+      "draft-IERC1822.sol"
+    ]
+  },
+  "findings": [
+    {
+      "id": "upgrade-initializer-delegatecall-seize",
+      "title": "Upgrade initializer can seize control or move ETH via delegatecall",
+      "severity": "Critical",
+      "status": "Confirmed",
+      "details": {
+        "description": "Proxy upgrades execute delegatecalls into new implementations. TransparentUpgradeableProxy routes admin upgradeToAndCall to ERC1967Upgrade._upgradeToAndCall with forceCall=true, and ProxyAdmin.upgradeAndCall forwards msg.value. The initializer runs with msg.sender = admin and can write ERC1967 control slots or transfer ETH.",
+        "evidence": {
+          "TransparentUpgradeableProxy.sol": {
+            "constructor_order_line": [63],
+            "_dispatchUpgradeToAndCall_line": [172]
+          },
+          "ERC1967Upgrade.sol": {
+            "_upgradeToAndCall_line": [61]
+          },
+          "ProxyAdmin.sol": {
+            "upgradeAndCall_line": [74]
+          }
+        },
+        "impact": "A malicious or flawed initializer can rewrite _ADMIN_SLOT/_IMPLEMENTATION_SLOT and siphon any ETH sent during the upgrade, resulting in permanent governance takeover or fund loss.",
+        "recommendation": "Prefer a two-step upgrade: (1) upgrade() with value=0, (2) call an initializer from the intended governance account with explicit parameters. Keep initializers minimal, audited, and idempotent; default to sending zero ETH.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade",
+          "ProxyAdmin",
+          "Address"
+        ]
+      }
+    },
+    {
+      "id": "admin-self-assignment-bricks-admin",
+      "title": "Setting admin to the proxy address permanently bricks admin functions",
+      "severity": "High",
+      "status": "Confirmed",
+      "details": {
+        "description": "TransparentUpgradeableProxy dispatches changeAdmin via _dispatchChangeAdmin without forbidding newAdmin == address(this). ERC1967Upgrade._changeAdmin only checks nonzero. If the admin is set to the proxy's own address, no external caller can satisfy msg.sender == _getAdmin() in _fallback, making admin-only operations unreachable.",
+        "evidence": {
+          "TransparentUpgradeableProxy.sol": {
+            "_dispatchChangeAdmin_line": [146],
+            "_fallback_line": [88]
+          },
+          "ERC1967Upgrade.sol": {
+            "_changeAdmin_line": [124]
+          }
+        },
+        "impact": "Permanent loss of upgradeability and inability to rotate admin.",
+        "recommendation": "Add operational guardrails to forbid newAdmin == proxy address; if forking, add an on-chain require check.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade"
+        ]
+      }
+    },
+    {
+      "id": "transparent-role-split-owner-drift",
+      "title": "Transparent admin cannot call implementation functions; initialization via msg.sender can misassign owner",
+      "severity": "High",
+      "status": "By design; operational hazard",
+      "details": {
+        "description": "By design, admin calls never reach the implementation and revert with 'admin cannot fallback to proxy target'. If initialize uses msg.sender (e.g., Ownable.__Ownable_init), owner may become ProxyAdmin or the deployer depending on how init runs. OnlyOwner ops then become unreachable from the admin account.",
+        "evidence": {
+          "TransparentUpgradeableProxy.sol": {
+            "_fallback_line": [88],
+            "admin_revert_msg_line": [103]
+          },
+          "ERC1967Proxy.sol": {
+            "constructor_order_line": [31]
+          },
+          "Ownable.sol": {
+            "version": "4.7.0"
+          }
+        },
+        "impact": "Freeze of privileged operations until a corrective upgrade/ownership transfer is performed.",
+        "recommendation": "Enforce role-splitting. Pass explicit owner parameters during init or include a transferOwnership call in the same upgrade payload.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Proxy",
+          "Ownable"
+        ]
+      }
+    },
+    {
+      "id": "upgradeToAndCall-eth-value-stranding",
+      "title": "upgradeToAndCall accepts ETH; funds can become stuck on the proxy",
+      "severity": "Medium",
+      "status": "Confirmed",
+      "details": {
+        "description": "_dispatchUpgradeTo enforces msg.value == 0, but _dispatchUpgradeToAndCall is payable and forwards msg.value to the initializer. If the initializer ignores or partially uses the value and no withdrawal path exists, ETH can sit on the proxy.",
+        "evidence": {
+          "TransparentUpgradeableProxy.sol": {
+            "_dispatchUpgradeTo_line": [158],
+            "_dispatchUpgradeToAndCall_line": [172]
+          }
+        },
+        "impact": "Accidental ETH sent during upgrades may become inaccessible until a future upgrade adds a withdrawal path.",
+        "recommendation": "Default to value=0 in all upgrades. Only send ETH if an audited initializer requires it and provides a withdrawal mechanism.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "Proxy",
+          "Address"
+        ]
+      }
+    },
+    {
+      "id": "delegatecall-upgrade-control-plane-risk",
+      "title": "Upgrade-time delegatecalls can corrupt ERC1967 control slots",
+      "severity": "High",
+      "status": "Confirmed",
+      "details": {
+        "description": "ERC1967Upgrade._upgradeToAndCall and _upgradeBeaconToAndCall execute delegatecalls into new implementations. That logic can directly write _IMPLEMENTATION_SLOT/_ADMIN_SLOT/_BEACON_SLOT.",
+        "evidence": {
+          "ERC1967Upgrade.sol": {
+            "_upgradeToAndCall_line": [61],
+            "_upgradeBeaconToAndCall_line": [160],
+            "_ADMIN_SLOT_line": [108, 116],
+            "_IMPLEMENTATION_SLOT_line": [34]
+          }
+        },
+        "impact": "Loss of upgrade/admin control if malicious logic is introduced at upgrade time.",
+        "recommendation": "Treat new implementations as fully trusted. Avoid untrusted setup calls; review any storage writes in migrations.",
+        "contracts_involved": [
+          "ERC1967Upgrade",
+          "TransparentUpgradeableProxy",
+          "BeaconProxy"
+        ]
+      }
+    },
+    {
+      "id": "proxyadmin-helpers-trust-and-asserts",
+      "title": "ProxyAdmin helpers can mislead if not current admin; mutators rely on proxy gate",
+      "severity": "Medium",
+      "status": "Confirmed",
+      "details": {
+        "description": "getProxyAdmin/getProxyImplementation assume ProxyAdmin is admin; otherwise, calls forward to the implementation via transparent fallback and may return spoofed values. Mutators like upgrade/changeProxyAdmin don't assert admin equality up front.",
+        "evidence": {
+          "ProxyAdmin.sol": {
+            "getProxyAdmin_line": [36],
+            "getProxyImplementation_line": [21],
+            "upgrade_line": [62],
+            "changeProxyAdmin_line": [51]
+          }
+        },
+        "impact": "Operational confusion and delayed incident response if dashboards trust spoofed reads.",
+        "recommendation": "Before mutating, verify admin via EIP-1967 storage slot off-chain; add explicit admin-equality asserts in tooling.",
+        "contracts_involved": [
+          "ProxyAdmin",
+          "TransparentUpgradeableProxy"
+        ]
+      }
+    },
+    {
+      "id": "beaconproxy-runtime-trust-dos",
+      "title": "BeaconProxy trusts the beacon at runtime; bad beacon or selfdestructed impl bricks all attached proxies",
+      "severity": "High",
+      "status": "Confirmed",
+      "details": {
+        "description": "BeaconProxy._implementation simply returns IBeacon(beacon).implementation() and does not recheck code at runtime. UpgradeableBeacon enforces Address.isContract on upgrades, but a compromised beacon owner or custom beacon can point to an EOA/zero or an impl that later self-destructs.",
+        "evidence": {
+          "BeaconProxy.sol": {
+            "_implementation_line": [44]
+          },
+          "UpgradeableBeacon.sol": {
+            "upgradeTo_line": [49],
+            "isContract_check_line": [62]
+          }
+        },
+        "impact": "System-wide DoS for all BeaconProxy instances using the beacon until governance upgrades again.",
+        "recommendation": "Keep beacon upgrades tightly governed; avoid implementations with selfdestruct; add monitoring to detect code-size=0.",
+        "contracts_involved": [
+          "BeaconProxy",
+          "UpgradeableBeacon",
+          "IBeacon",
+          "ERC1967Upgrade",
+          "Address"
+        ]
+      }
+    },
+    {
+      "id": "transparentproxy-extension-selector-clash",
+      "title": "Extending TransparentUpgradeableProxy with new external functions can shadow admin operations",
+      "severity": "Medium",
+      "status": "Informational (no such extension present in this repo)",
+      "details": {
+        "description": "TransparentUpgradeableProxy implements admin operations via _fallback selector dispatch. Adding external/public functions can collide with these selectors and make admin ops unreachable.",
+        "evidence": {
+          "TransparentUpgradeableProxy.sol": {
+            "warning_comment_near_abi_note": [53, 56],
+            "selector_dispatch_lines": [92, 100]
+          }
+        },
+        "impact": "Potential permanent loss of upgradeability if extended incorrectly.",
+        "recommendation": "Do not extend TransparentUpgradeableProxy with new external functions; use composition.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy"
+        ]
+      }
+    },
+    {
+      "id": "constructor-admin-slot-unset",
+      "title": "Initializer that reads admin slot during constructor observes unset value",
+      "severity": "Low",
+      "status": "Confirmed",
+      "details": {
+        "description": "TransparentUpgradeableProxy constructor calls ERC1967Proxy(_logic,_data) before _changeAdmin(admin_), so any initializer that reads _ADMIN_SLOT at constructor time sees address(0).",
+        "evidence": {
+          "TransparentUpgradeableProxy.sol": {
+            "constructor_line": [63]
+          },
+          "ERC1967Proxy.sol": {
+            "constructor_line": [23]
+          }
+        },
+        "impact": "Possible misconfiguration if initializer relies on proxy admin slot.",
+        "recommendation": "Avoid reading the proxy admin slot in initializers; pass explicit parameters or run init after admin is set.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Proxy",
+          "ERC1967Upgrade"
+        ]
+      }
+    },
+    {
+      "id": "cve-2023-30541-not-applicable",
+      "title": "CVE-2023-30541 selector clash: not applicable to v4.8.3 TransparentUpgradeableProxy",
+      "severity": "Low",
+      "status": "Not Applicable",
+      "details": {
+        "description": "The included TransparentUpgradeableProxy declares 'last updated v4.8.3', which contains the upstream fix.",
+        "evidence": {
+          "TransparentUpgradeableProxy.sol": {
+            "version": "4.8.3"
+          }
+        },
+        "impact": "None in this codebase.",
+        "recommendation": "None.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy"
+        ]
+      }
+    },
+    {
+      "id": "transparent-plus-uups-dual-upgrade-path",
+      "title": "Using a UUPS implementation behind a Transparent proxy creates a second upgrade authority",
+      "severity": "Critical",
+      "status": "Not Applicable in this repository",
+      "details": {
+        "description": "If the implementation exposes UUPS upgradeTo/upgradeToAndCall and _authorizeUpgrade, non-admin callers can upgrade the proxy through the implementation. This repository only includes IERC1822 interface and no UUPSUpgradeable implementation, so the risk is not present unless an external UUPS impl is paired.",
+        "evidence": {
+          "draft-IERC1822.sol": {
+            "present": true
+          },
+          "UUPSUpgradeable_implementation_present": false
+        },
+        "impact": "If paired with UUPS, full governance bypass via implementation's auth.",
+        "recommendation": "Avoid mixing Transparent with UUPS. If you must, hard-disable UUPS entrypoints or use a UUPS proxy instead.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade",
+          "IERC1822Proxiable"
+        ]
+      }
+    }
+  ]
+}

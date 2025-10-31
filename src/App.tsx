@@ -14,6 +14,8 @@ import {
   BeaconPage,
   ImpactPage
 } from '@pages/index';
+import { ReportSelector } from '@components/index';
+import { useReport } from '@/features/report/ReportProvider';
 
 const { Sider, Content, Header } = Layout;
 
@@ -38,6 +40,7 @@ const menuItems: MenuProps['items'] = navigation.map((item) => ({
 
 export default function App() {
   const location = useLocation();
+  const { descriptor } = useReport();
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -47,6 +50,9 @@ export default function App() {
             Sentinel Portal
           </Typography.Title>
           <Typography.Text type="secondary">Upgradeability risk cockpit</Typography.Text>
+        </div>
+        <div style={{ padding: '0 16px 16px' }}>
+          <ReportSelector />
         </div>
         <Menu
           theme="dark"
@@ -62,6 +68,7 @@ export default function App() {
             {navigation.find((item) => item.path === (location.pathname === '/' ? '/' : location.pathname))?.label ??
               'Security Report'}
           </Typography.Title>
+          <Typography.Text style={{ color: '#8fa3d9' }}>{descriptor.name}</Typography.Text>
         </Header>
         <Content style={{ padding: '24px 32px' }}>
           <Routes>

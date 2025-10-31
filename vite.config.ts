@@ -12,6 +12,7 @@ export default defineConfig({
       '@pages': path.resolve(__dirname, 'src/pages'),
       '@lib': path.resolve(__dirname, 'src/lib'),
       '@types': path.resolve(__dirname, 'src/types'),
+      '@data': path.resolve(__dirname, 'src/data'),
       '@theme': path.resolve(__dirname, 'src/theme'),
       '@providers': path.resolve(__dirname, 'src/providers')
     }

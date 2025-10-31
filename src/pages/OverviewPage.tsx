@@ -1,5 +1,6 @@
 import { Alert, Card, Col, List, Row, Space, Spin, Statistic, Tag, Typography } from 'antd';
 import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { ReportSummaryCard } from '@components/ReportSummaryCard';
 import { useReport } from '@/features/report/ReportProvider';
 import { countBySeverity, severityOrder } from '@lib/metrics';
@@ -59,7 +60,7 @@ const statusColor: Record<ChecklistStatus, string> = {
 };
 
 export function OverviewPage() {
-  const { report, isLoading, error } = useReport();
+  const { report, isLoading, error, descriptor } = useReport();
 
   const posture = useMemo(() => {
     if (!report) return null;
@@ -148,9 +149,9 @@ export function OverviewPage() {
               Risk posture
             </Typography.Title>
             <Typography.Paragraph style={{ color: '#c8d1f5', marginBottom: 24 }}>
-              Pre-mitigation posture is <strong>Severe</strong> driven by Transparent + UUPS upgrade hazards; week-one
-              remediations reduce posture to <strong>Moderate</strong> by killing unauthorized upgrade paths, enforcing
-              initializer discipline, and guarding selector collisions.
+              {descriptor.shortName ?? descriptor.name} currently carries a <strong>{posture.current.label}</strong> posture.
+              TRM-backed mitigations target a <strong>{posture.target.label}</strong> posture by hardening upgrade flows
+              and removing selector-collision footguns that surfaced during recursive analysis.
             </Typography.Paragraph>
             <Row gutter={[24, 24]}>
               <Col xs={24} md={12}>
@@ -163,7 +164,7 @@ export function OverviewPage() {
           </Card>
         </Col>
         <Col xs={24} lg={8}>
-          <ReportSummaryCard report={report} />
+          <ReportSummaryCard report={report} descriptor={descriptor} />
         </Col>
       </Row>
 
@@ -214,6 +215,30 @@ export function OverviewPage() {
               showIcon
               type="warning"
               message="Critical risk stems from Transparent + UUPS mixing and governance bypass. Fix these first to collapse cascading findings."
+            />
+          </Card>
+        </Col>
+        <Col xs={24} md={12}>
+          <Card style={{ background: '#141823', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <Typography.Title level={4} style={{ color: '#f4f7ff' }}>
+              Sentinel portal rollout
+            </Typography.Title>
+            <Typography.Paragraph style={{ color: '#c8d1f5' }}>
+              Every section of the Sentinel cockpit is wired to the TRM findings for {descriptor.shortName ?? descriptor.name}.
+              Use the quick links below to jump between artefacts.
+            </Typography.Paragraph>
+            <List
+              dataSource={descriptor.todo}
+              renderItem={(task) => (
+                <List.Item>
+                  <Space align="center" size={12} style={{ width: '100%' }}>
+                    <Tag color={task.done ? '#4cd6a5' : '#f6c344'}>{task.done ? 'Done' : 'Review'}</Tag>
+                    <Link to={task.route} style={{ color: '#f4f7ff' }}>
+                      {task.label}
+                    </Link>
+                  </Space>
+                </List.Item>
+              )}
             />
           </Card>
         </Col>
