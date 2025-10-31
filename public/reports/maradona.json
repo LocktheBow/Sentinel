@@ -1,5 +1,140 @@
 {
   "security_score": 30,
+  "findings": [
+    {
+      "source": "unknown",
+      "details": {
+        "description": "Setting the proxy admin to the proxy's own address makes all admin ops unreachable. No external caller can have msg.sender == proxy.",
+        "severity": "High",
+        "final_conclusion": "Status: Confirmed",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "Admin path enforces zero value for some selectors, but upgradeToAndCall intentionally accepts value. If the initializer does not move it, ETH can remain stuck at the proxy.",
+        "severity": "Medium",
+        "final_conclusion": "Status: Confirmed",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "Transparent pattern blocks the admin from falling back to the implementation. If runtime roles are assigned to the admin, those ops become unreachable.",
+        "severity": "Low",
+        "final_conclusion": "Status: Confirmed",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "ProxyAdmin assumes it is the proxy admin. If it is not, its calls are forwarded by the Transparent proxy to the implementation. This can cause unintended execution when selectors overlap.",
+        "severity": "Medium",
+        "final_conclusion": "Status: Confirmed",
+        "contracts_involved": [
+          "ProxyAdmin",
+          "TransparentUpgradeableProxy"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "If the implementation behind a Transparent proxy exposes UUPS upgradeTo/upgradeToAndCall and authorizes a different actor than the proxy admin, upgrades can bypass intended governance.",
+        "severity": "High",
+        "final_conclusion": "Status: Context-dependent",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ProxyAdmin",
+          "ERC1967Upgrade",
+          "draft-IERC1822"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "Constructor calls into implementation via delegatecall before storing the admin. Any initializer relying on msg.sender or the admin value can misbehave.",
+        "severity": "Medium",
+        "final_conclusion": "Status: Confirmed",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Proxy",
+          "ERC1967Upgrade"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "Because admin calls are handled inside the proxy, identical selectors in the implementation are unreachable by the admin via the proxy.",
+        "severity": "Low",
+        "final_conclusion": "Status: Confirmed",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "UpgradeableBeacon owner can change the implementation for every BeaconProxy wired to it. Compromise of that owner compromises all dependents.",
+        "severity": "High",
+        "final_conclusion": "Status: Confirmed",
+        "contracts_involved": [
+          "UpgradeableBeacon",
+          "BeaconProxy"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "BeaconProxy delegates to whatever address the beacon returns at call time. OZ UpgradeableBeacon prevents upgrading to a non‑contract, but if the implementation self‑destructs later or a non‑OZ beacon is used, calls can revert or no‑op.",
+        "severity": "Medium",
+        "final_conclusion": "Status: Context-dependent",
+        "contracts_involved": [
+          "BeaconProxy",
+          "UpgradeableBeacon",
+          "IBeacon"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "Initializer code runs via delegatecall during upgrade, with proxy storage and semantics. Incorrect assumptions about msg.sender or side effects can misconfigure roles or state.",
+        "severity": "Medium",
+        "final_conclusion": "Status: Confirmed",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "This repository uses a version with the fix for the historic selector clash.",
+        "severity": "Info",
+        "final_conclusion": "Status: Not Applicable",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy"
+        ]
+      }
+    }
+  ],
   "meta": {
     "project_root": "/app/projects/Maradona",
     "files": [
@@ -17,175 +152,6 @@
       "TransparentUpgradeableProxy.sol",
       "UpgradeableBeacon.sol",
       "draft-IERC1822.sol"
-    ],
-    "notes": "Findings are verified against the 14 proxy infra contracts in this repo. Anything that requires an application/UUPS implementation is marked context-dependent."
-  },
-  "findings": [
-    {
-      "id": "TPX-ADMIN-SELF-ASSIGN",
-      "title": "Admin self-assignment bricks upgrades permanently",
-      "severity": "High",
-      "status": "Confirmed",
-      "description": "Setting the proxy admin to the proxy's own address makes all admin ops unreachable. No external caller can have msg.sender == proxy.",
-      "evidence": {
-        "TransparentUpgradeableProxy.sol": {
-          "functions": ["_fallback", "_dispatchChangeAdmin"],
-          "lines": [88, 103, 146, 153]
-        },
-        "ERC1967Upgrade.sol": {
-          "functions": ["_setAdmin", "_changeAdmin"],
-          "lines": [114, 117, 124, 127]
-        }
-      },
-      "contracts_involved": ["TransparentUpgradeableProxy", "ERC1967Upgrade"],
-      "merged_sources": ["deep_adversarial", "analyze_proxy_storage"]
-    },
-    {
-      "id": "TPX-PAYABLE-UPGRADE-VALUE",
-      "title": "ETH can be stranded via payable upgradeToAndCall",
-      "severity": "Medium",
-      "status": "Confirmed",
-      "description": "Admin path enforces zero value for some selectors, but upgradeToAndCall intentionally accepts value. If the initializer does not move it, ETH can remain stuck at the proxy.",
-      "evidence": {
-        "TransparentUpgradeableProxy.sol": {
-          "functions": ["_dispatchUpgradeToAndCall", "_requireZeroValue"],
-          "lines": [172, 176, 190, 192],
-          "notes": "Zero-value check is used by other dispatchers, not by upgradeToAndCall."
-        }
-      },
-      "contracts_involved": ["TransparentUpgradeableProxy", "ERC1967Upgrade"],
-      "merged_sources": ["deep_adversarial", "analyze_upgrade_admin"]
-    },
-    {
-      "id": "TPX-ROLE-SPLIT-NO-FALLBACK",
-      "title": "Admin cannot call implementation through the proxy",
-      "severity": "Low",
-      "status": "Confirmed",
-      "description": "Transparent pattern blocks the admin from falling back to the implementation. If runtime roles are assigned to the admin, those ops become unreachable.",
-      "evidence": {
-        "TransparentUpgradeableProxy.sol": {
-          "functions": ["_fallback"],
-          "lines": [88, 103]
-        }
-      },
-      "contracts_involved": ["TransparentUpgradeableProxy"],
-      "merged_sources": ["deep_adversarial", "analyze_upgrade_admin"]
-    },
-    {
-      "id": "PXA-NO-ADMIN-ASSERT",
-      "title": "ProxyAdmin mutators do not assert current admin",
-      "severity": "Medium",
-      "status": "Confirmed",
-      "description": "ProxyAdmin assumes it is the proxy admin. If it is not, its calls are forwarded by the Transparent proxy to the implementation. This can cause unintended execution when selectors overlap.",
-      "evidence": {
-        "ProxyAdmin.sol": {
-          "functions": ["upgrade", "upgradeAndCall", "changeProxyAdmin", "getProxyAdmin"],
-          "lines": [62, 79],
-          "notes": "No `require(getProxyAdmin(proxy) == address(this))` precondition."
-        },
-        "TransparentUpgradeableProxy.sol": {
-          "functions": ["_fallback"],
-          "lines": [88, 109]
-        }
-      },
-      "contracts_involved": ["ProxyAdmin", "TransparentUpgradeableProxy"],
-      "merged_sources": ["deep_adversarial", "analyze_upgrade_admin", "interactions"]
-    },
-    {
-      "id": "MIX-TRANSPARENT-UUPS",
-      "title": "Confused-deputy upgrades when mixing Transparent proxy with UUPS-capable implementation",
-      "severity": "High",
-      "status": "Context-dependent",
-      "description": "If the implementation behind a Transparent proxy exposes UUPS upgradeTo/upgradeToAndCall and authorizes a different actor than the proxy admin, upgrades can bypass intended governance.",
-      "assumptions": [
-        "A UUPS or otherwise upgrade-capable implementation is used behind the Transparent proxy.",
-        "Implementation-level authorization differs from proxy admin."
-      ],
-      "evidence": {
-        "TransparentUpgradeableProxy.sol": { "functions": ["_fallback"], "lines": [88, 109] },
-        "ProxyAdmin.sol": { "functions": ["upgrade", "upgradeAndCall"], "lines": [62, 79] },
-        "draft-IERC1822.sol": { "functions": ["proxiableUUID()"] }
-      },
-      "contracts_involved": ["TransparentUpgradeableProxy", "ProxyAdmin", "ERC1967Upgrade", "draft-IERC1822"],
-      "merged_sources": ["curated", "analyze_upgrade_admin", "interactions"]
-    },
-    {
-      "id": "TPX-INIT-ORDER",
-      "title": "Initializer runs before admin is set in Transparent proxy constructor",
-      "severity": "Medium",
-      "status": "Confirmed",
-      "description": "Constructor calls into implementation via delegatecall before storing the admin. Any initializer relying on msg.sender or the admin value can misbehave.",
-      "evidence": {
-        "TransparentUpgradeableProxy.sol": { "functions": ["constructor"], "lines": [63, 69] },
-        "ERC1967Proxy.sol": { "functions": ["constructor"], "lines": [22, 23] },
-        "ERC1967Upgrade.sol": { "functions": ["_upgradeToAndCall"], "lines": [68] }
-      },
-      "contracts_involved": ["TransparentUpgradeableProxy", "ERC1967Proxy", "ERC1967Upgrade"],
-      "merged_sources": ["analyze_proxy_storage", "deep_adversarial"]
-    },
-    {
-      "id": "TPX-SELECTOR-SHADOW",
-      "title": "Admin selectors shadow identically named implementation functions",
-      "severity": "Low",
-      "status": "Confirmed",
-      "description": "Because admin calls are handled inside the proxy, identical selectors in the implementation are unreachable by the admin via the proxy.",
-      "evidence": {
-        "TransparentUpgradeableProxy.sol": {
-          "interfaces": ["ITransparentUpgradeableProxy.admin", "upgradeTo", "upgradeToAndCall", "changeAdmin"],
-          "lines": [19, 23, 77, 99]
-        }
-      },
-      "contracts_involved": ["TransparentUpgradeableProxy"],
-      "merged_sources": ["analyze_proxy_storage"]
-    },
-    {
-      "id": "BEACON-OWNER-CENTRALIZATION",
-      "title": "Beacon owner can upgrade all dependent BeaconProxy instances",
-      "severity": "High",
-      "status": "Confirmed",
-      "description": "UpgradeableBeacon owner can change the implementation for every BeaconProxy wired to it. Compromise of that owner compromises all dependents.",
-      "evidence": {
-        "UpgradeableBeacon.sol": { "functions": ["upgradeTo", "_setImplementation"], "lines": [49, 62] },
-        "BeaconProxy.sol": { "functions": ["_implementation"], "lines": [44, 45] }
-      },
-      "contracts_involved": ["UpgradeableBeacon", "BeaconProxy"],
-      "merged_sources": ["curated", "interactions"]
-    },
-    {
-      "id": "BEACON-NONCONTRACT-RISK",
-      "title": "Beacon runtime DoS if beacon returns non-contract or code later disappears",
-      "severity": "Medium",
-      "status": "Context-dependent",
-      "description": "BeaconProxy delegates to whatever address the beacon returns at call time. OZ UpgradeableBeacon prevents upgrading to a non‑contract, but if the implementation self‑destructs later or a non‑OZ beacon is used, calls can revert or no‑op.",
-      "evidence": {
-        "BeaconProxy.sol": { "functions": ["_implementation"], "lines": [44, 45] },
-        "UpgradeableBeacon.sol": { "functions": ["_setImplementation"], "lines": [62] }
-      },
-      "contracts_involved": ["BeaconProxy", "UpgradeableBeacon", "IBeacon"],
-      "merged_sources": ["deep_adversarial", "analyze_proxy_storage"]
-    },
-    {
-      "id": "TPX-ARB-INIT-ON-UPGRADE",
-      "title": "upgradeToAndCall executes arbitrary initializer in proxy context",
-      "severity": "Medium",
-      "status": "Confirmed",
-      "description": "Initializer code runs via delegatecall during upgrade, with proxy storage and semantics. Incorrect assumptions about msg.sender or side effects can misconfigure roles or state.",
-      "evidence": {
-        "TransparentUpgradeableProxy.sol": { "functions": ["_dispatchUpgradeToAndCall"], "lines": [172, 176] },
-        "ERC1967Upgrade.sol": { "functions": ["_upgradeToAndCall"], "lines": [68] }
-      },
-      "contracts_involved": ["TransparentUpgradeableProxy", "ERC1967Upgrade"],
-      "merged_sources": ["analyze_upgrade_admin"]
-    },
-    {
-      "id": "CVE-2023-30541-N/A",
-      "title": "CVE-2023-30541 Transparent proxy selector clash",
-      "severity": "Informational",
-      "status": "Not Applicable",
-      "description": "This repository uses a version with the fix for the historic selector clash.",
-      "evidence": { "notes": "OZ v4.8.3+ layout used here; not vulnerable." },
-      "contracts_involved": ["TransparentUpgradeableProxy"],
-      "merged_sources": ["applicability"]
-    }
-  ]
+    ]
+  }
 }

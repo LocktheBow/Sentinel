@@ -1,76 +1,426 @@
 {
-  "security_score": 12,
+  "security_score": 1,
   "findings": [
     {
       "source": "curated",
       "details": {
-        "description": "Transparent proxy + UUPS-like implementation exposure enables a non-admin to upgrade the proxy to a malicious implementation, then seize or brick admin via direct EIP-1967 slot writes.",
+        "description": "Public/weakly-guarded upgradeTo/changeAdmin in implementation reachable via Transparent fallback (selector collision) enables arbitrary proxy takeover by any caller.",
         "severity": "Critical",
         "line_numbers": [
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          83,
           84,
+          85,
           86,
           87,
           88,
+          89,
           90,
+          146,
+          147,
+          148,
+          149,
+          150,
+          151,
+          152,
+          153,
+          172,
+          174
+        ],
+        "red_team_argument": "In the Transparent pattern, non-admin calls are delegated to the implementation. If that implementation exposes upgradeTo/upgradeToAndCall/changeAdmin (or equivalents) that are insufficiently authorized, any user can call those selectors on the proxy. The call delegate-executes in the proxy context and can write EIP-1967 slots, instantly seizing upgrade/admin control or installing malicious logic to drain funds.",
+        "blue_team_argument": "Ensure implementations behind Transparent never expose functions with selectors that collide with proxy admin ops unless they are strictly authorized (e.g., UUPSUpgradeable with robust _authorizeUpgrade). Prefer implementations that do not expose upgradeTo/upgradeToAndCall/changeAdmin at all under Transparent. Add CI checks to detect selector collisions with ITransparentUpgradeableProxy and reject deployments.",
+        "final_conclusion": "Selector collisions plus weak authorization on implementation-side upgrade/admin routines allow arbitrary upgrades via fallback, resulting in immediate control and fund loss.",
+        "attack_scenario": "1) Current implementation accidentally exposes upgradeTo(address) with weak or no access control. 2) Attacker calls proxy.upgradeTo(maliciousImpl). 3) Transparent forwards to implementation; function runs via delegatecall in proxy storage and writes _IMPLEMENTATION_SLOT to maliciousImpl. 4) Malicious implementation drains ETH/tokens or corrupts state.",
+        "economic_impact": "Immediate, total compromise of the proxy: arbitrary upgrades/admin rotation and draining of all funds/state under control of the proxy.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "Proxy",
+          "ERC1967Upgrade",
+          "ImplementationContract (user-defined)"
+        ],
+        "chained_findings": [
+          "Function selector collision between proxy admin selectors and implementation functions",
+          "Delegatecall executes implementation code in proxy storage context"
+        ]
+      }
+    },
+    {
+      "source": "synthesis",
+      "details": {
+        "description": "Spoofed ProxyAdmin getters + missing admin-assert in mutators induce unauthorized upgrades on proxies not actually administered by this ProxyAdmin (policy bypass).",
+        "severity": "Critical",
+        "line_numbers": [
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          88,
           92,
-          94,
-          96,
-          98,
+          95,
+          103,
+          172,
+          174
+        ],
+        "red_team_argument": "ProxyAdmin.getProxyAdmin/getProxyImplementation use staticcall to admin()/implementation(). If this ProxyAdmin is not the real admin, the call is forwarded to the implementation where those selectors can be spoofed. Operators relying on these getters may falsely believe control is intact and proceed to call upgrade/upgradeAndCall. Those mutators lack an assert that this ProxyAdmin is admin, so the call forwards to the implementation. If the implementation is UUPS and authorizes the caller, the proxy is upgraded bypassing intended governance.",
+        "blue_team_argument": "Treat ProxyAdmin getters as unsafe unless you first verify ProxyAdmin is the admin via direct EIP-1967 storage reads (eth_getStorageAt) or by instrumenting on-chain asserts in a hardened admin wrapper. Avoid relying on implementation-reported values. Do not mix Transparent with UUPS-exposed implementations; if you must, ensure _authorizeUpgrade never grants rights to ProxyAdmin directly.",
+        "final_conclusion": "A spoof-and-forward chain can trick operators into performing upgrades on proxies they do not control, culminating in unauthorized upgrades via UUPS paths and full compromise.",
+        "attack_scenario": "1) Proxy X no longer administered by ProxyAdmin Y. 2) Y.getProxyAdmin(X) is forwarded to implementation L.admin() which returns Y (spoof). 3) Operator proceeds with Y.upgrade(X, newImpl). 4) Since Y isn’t admin, Transparent forwards to L.upgradeTo; L._authorizeUpgrade(msg.sender=Y) passes. 5) X is upgraded contrary to governance intent, potentially to malicious code that steals funds.",
+        "economic_impact": "Governance-policy bypass leading to arbitrary upgrades and potential draining of all proxy-controlled funds across targeted proxies.",
+        "contracts_involved": [
+          "ProxyAdmin",
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade",
+          "Implementation (UUPSUpgradeable)"
+        ],
+        "chained_findings": [
+          "ProxyAdmin getters can be spoofed when not admin",
+          "ProxyAdmin mutators lack admin-ownership assertion",
+          "Transparent fallback forwards non-admin calls",
+          "UUPS authorizeUpgrade grants rights to caller"
+        ]
+      }
+    },
+    {
+      "source": "curated",
+      "details": {
+        "description": "Transparent + UUPS role-confusion: ProxyAdmin not the proxy admin, forwarded call hits UUPS upgradeTo/upgradeToAndCall in implementation and upgrades the proxy anyway (bypassing Transparent admin gate).",
+        "severity": "Critical",
+        "line_numbers": [
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          88,
+          92,
+          95,
+          103,
+          146,
+          147,
+          148,
+          149,
+          150,
+          151,
+          152,
+          153,
+          172,
+          174
+        ],
+        "red_team_argument": "Transparent proxies forward calls from non-admins to the implementation. ProxyAdmin mutators do not assert on-chain that it is the current admin; if it isn’t, calling ProxyAdmin.upgrade/upgradeAndCall forwards to the implementation. If the implementation is UUPS-style and authorizes ProxyAdmin (e.g., OwnableUpgradeable owner = ProxyAdmin), its upgradeTo/upgradeToAndCall will execute in the proxy’s storage context and update the proxy’s EIP-1967 implementation slot. Result: an upgrade performed by an address that is not the Transparent admin.",
+        "blue_team_argument": "Never mix Transparent proxies with UUPS-exposed implementations unless absolutely necessary. Enforce a hard pre-check that the proxy’s EIP-1967 admin slot equals the ProxyAdmin address before any mutator (on-chain assertion in a wrapper or off-chain eth_getStorageAt check). If UUPS is unavoidable, ensure _authorizeUpgrade only permits a strictly governed timelock/safe and not ProxyAdmin directly, or make UUPS functions unreachable when running behind Transparent.",
+        "final_conclusion": "When a Transparent proxy runs a UUPS-capable implementation, ProxyAdmin can unintentionally bypass the Transparent admin if it is not the current admin. This creates a direct, high-impact path to unauthorized upgrades.",
+        "attack_scenario": "1) Proxy P uses TransparentUpgradeableProxy; implementation I is UUPSUpgradeable and OwnableUpgradeable with owner set to ProxyAdmin A. 2) Admin of P is rotated to Q (A is no longer admin). 3) A’s owner mistakenly calls A.upgrade(P, newImpl). 4) Because A is not the admin, P forwards to I; I.upgradeTo is executed and _authorizeUpgrade(msg.sender=A) passes. 5) I writes _IMPLEMENTATION_SLOT in P’s storage via delegatecall. P is upgraded without Q’s consent.",
+        "economic_impact": "Full loss of upgrade control and potential draining of all assets controlled by the proxy; integrity of governance processes compromised across all users relying on that proxy.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ProxyAdmin",
+          "ERC1967Upgrade",
+          "Implementation (UUPSUpgradeable)"
+        ],
+        "chained_findings": [
+          "ProxyAdmin mutators missing explicit admin-ownership assert",
+          "Transparent fallback delegates non-admin calls to implementation",
+          "UUPS implementation exposes upgradeTo/upgradeToAndCall",
+          "Function selector collision between proxy admin selectors and implementation selectors"
+        ]
+      }
+    },
+    {
+      "source": "curated",
+      "details": {
+        "description": "Uninitialized initializer front-run via Transparent role-split, followed by UUPS-powered upgrade to attacker logic (full takeover).",
+        "severity": "Critical",
+        "line_numbers": [
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          88,
+          89,
+          90,
           101,
           102,
           103,
-          133,
-          134,
-          139,
-          145,
-          146,
-          153,
+          104,
+          105,
           172,
           173,
           174,
           175,
-          176
+          176,
+          177
         ],
-        "red_team_argument": "Because TransparentUpgradeableProxy forwards any non-admin call to the implementation, an attacker can call proxy.upgradeTo(malImpl) or proxy.upgradeToAndCall(data). If the implementation exposes UUPS-like upgradeTo/upgradeToAndCall with weak/misconfigured authorization (e.g., missing or flawed authorizeUpgrade), the call executes in proxy context and updates the EIP-1967 implementation slot. After pointing to malImpl, the attacker can implement functions that directly write to EIP-1967 _ADMIN_SLOT via delegatecall to usurp admin or set admin to address(this) to permanently brick admin ops. From there, the attacker can drain funds or prevent recovery.",
-        "blue_team_argument": "Never pair Transparent proxies with implementations that expose upgrade/admin-like functions unless they are robustly authorized (UUPS with strict authorizeUpgrade) and intended for UUPS-only deployments. Prefer separating patterns: Transparent for upgradeability controlled solely by ProxyAdmin; UUPS for self-upgradeable implementations behind ERC1967Proxy. In all upgrade tooling, preflight-check getProxyAdmin(proxy) == address(ProxyAdmin) and block if not. Add on-chain allowlists in authorizeUpgrade to bound who can upgrade, and add monitoring for unexpected ImplementationUpgraded events.",
-        "final_conclusion": "Forwarding behavior in Transparent proxies, combined with UUPS-like functions in the implementation and weak authorization, creates an unauthorized upgrade path that can escalate to full admin takeover or permanent bricking. Treat as a critical architectural hazard.",
-        "attack_scenario": "1) Implementation behind Transparent exposes upgradeTo(address) with lax checks. 2) Attacker calls proxy.upgradeTo(maliciousImpl); not being admin, the call forwards to the implementation and succeeds. 3) The proxy now delegates to maliciousImpl. 4) Attacker invokes a function that writes _ADMIN_SLOT to their EOA or to address(this) and/or executes arbitrary draining logic. 5) Upgrades and recovery are under attacker control or permanently bricked.",
-        "economic_impact": "Total loss of control over the proxy: attacker-controlled logic can steal assets, mint/burn arbitrarily, or permanently prevent further upgrades. Impact can reach full TVL at risk and require full redeploy/migration.",
+        "red_team_argument": "Transparent proxies block the admin from calling implementation functions via fallback. If deployment doesn’t run initialize via _data or upgradeToAndCall, the initializer may remain public and callable by anyone. An attacker can call initialize to become owner, then invoke UUPS upgradeTo via the same proxy (forwarded by fallback) to install malicious logic and exfiltrate funds.",
+        "blue_team_argument": "Always initialize at deployment using the _data parameter or use upgradeToAndCall atomically. Protect initializers with initializer/reinitializer modifiers and explicit role checks. Avoid initializers that derive authority from msg.sender; instead pass explicit governance addresses. If using UUPS behind Transparent, ensure _authorizeUpgrade is strictly bound to a timelock/safe and not to a role attainable via a public initializer.",
+        "final_conclusion": "A missed or weakly protected initialization can be exploited by anyone to seize ownership and then leverage UUPS upgrade pathways via fallback to fully compromise the proxy.",
+        "attack_scenario": "1) Team deploys Transparent proxy but forgets to initialize implementation (initialize() is public). 2) Admin cannot call initialize through proxy due to transparency guard, leaving a window. 3) Attacker calls proxy.initialize(), becomes owner. 4) Implementation is UUPS-enabled; attacker calls proxy.upgradeTo(maliciousImpl). 5) Fallback delegates to implementation; _authorizeUpgrade passes since attacker is owner; proxy is upgraded and drained.",
+        "economic_impact": "Total loss of control and funds; attacker gains owner rights and upgrade control, enabling complete takeover in a single sequence.",
         "contracts_involved": [
           "TransparentUpgradeableProxy",
+          "ERC1967Proxy",
           "ERC1967Upgrade",
-          "Address",
-          "ProxyAdmin",
-          "Implementation (UUPS-enabled or custom)"
+          "Implementation (UUPSUpgradeable)"
         ],
         "chained_findings": [
-          "Transparent forwards non-admin calls to implementation (interactions)",
-          "Implementation exposes upgrade/admin-like functions (UUPS) with weak/misconfigured authorization (analyze_upgrade_admin)",
-          "ProxyAdmin does not assert it is current admin; pattern mixing magnifies risk (analyze_upgrade_admin)",
-          "Malicious implementation can write EIP-1967 admin/implementation slots via delegatecall"
+          "Role split: admin cannot call implementation functions via proxy",
+          "Initializer left public/uninitialized",
+          "UUPS upgradeTo reachable via fallback and authorized by newly seized owner role"
+        ]
+      }
+    },
+    {
+      "source": "deep_adversarial",
+      "details": {
+        "description": "A) Initializer owner drift to proxy if initializer uses msg.sender under Transparent",
+        "severity": "High",
+        "line_numbers": [
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          172,
+          173,
+          174,
+          175,
+          176,
+          177
+        ],
+        "red_team_argument": "During deployment, TransparentUpgradeableProxy calls ERC1967Proxy(_logic, _data) before setting the admin, which performs a delegatecall into the implementation. In that delegatecall, msg.sender is the proxy itself. Likewise, upgradeToAndCall later delegates into the new implementation with the proxy as msg.sender. Any initializer (e.g., OwnableUpgradeable’s __Ownable_init) that sets owner = msg.sender will set owner to the proxy address, not the intended EOA or governance. This can permanently misconfigure ownership/roles and block privileged actions guarded by onlyOwner.",
+        "blue_team_argument": "Do not rely on msg.sender in initializers. Use an initializer that takes an explicit owner/governance parameter (e.g., initialize(address initialOwner) + _transferOwnership(initialOwner)) and pass that in _data or in upgradeToAndCall data. Alternatively, deploy with empty _data and have the intended owner (a non-admin EOA) call the initializer directly post-deploy via the proxy. Avoid calling __Ownable_init() patterns that derive owner from msg.sender under a Transparent proxy.",
+        "final_conclusion": "Concrete footgun present by design: initializers that rely on msg.sender will set ownership/roles to the proxy. Use explicit initializer parameters or post-deploy user-called initialization.",
+        "attack_scenario": "Deployer uses TransparentUpgradeableProxy(_logic, admin_, abi.encodeWithSelector(MyImpl.initialize.selector)) and the initializer calls __Ownable_init() which sets owner = msg.sender. Owner becomes the proxy, so no EOA can call onlyOwner functions; governance is effectively lost unless a new upgrade path or rescue is available.",
+        "economic_impact": "Loss of administrative control and inability to perform privileged operations; potential inability to upgrade or recover assets guarded by onlyOwner, causing systemic loss or prolonged downtime.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Proxy",
+          "Implementation (upgradeable)"
+        ],
+        "chained_findings": [
+          "E",
+          "H",
+          "D"
+        ]
+      }
+    },
+    {
+      "source": "analyze_proxy_storage",
+      "details": {
+        "description": "Admin can be set to the proxy’s own address, bricking all admin-only functions (no EOA can be address(this)). No guard prevents this. Function/quotes: ERC1967Upgrade._setAdmin: \"require(newAdmin != address(0), 'ERC1967: new admin is the zero address');\"; ERC1967Upgrade._changeAdmin: \"emit AdminChanged(_getAdmin(), newAdmin); _setAdmin(newAdmin);\"",
+        "severity": "High",
+        "red_team_argument": "A mistaken or malicious admin call (or buggy front-end) to changeAdmin(address(this)) makes the proxy itself the admin. Since no external caller can have msg.sender == address(this), future upgrades/admin ops become impossible.",
+        "blue_team_argument": "This requires admin action. Operationally prevent it: add a guard at the caller layer (e.g., ProxyAdmin UI/tooling) forbidding newAdmin == proxy, or extend the proxy to check newAdmin != address(this).",
+        "final_conclusion": "Setting admin to the proxy address irreversibly bricks upgrade/admin capabilities; the code lacks a preventive check.",
+        "attack_scenario": "ProxyAdmin.changeProxyAdmin(proxy, proxy) is mistakenly executed. The proxy’s admin becomes the proxy itself; upgradeTo/changeAdmin/admin() are no longer callable by any EOA or contract, permanently disabling upgrades.",
+        "economic_impact": "Permanent loss of upgrade/administration capabilities; inability to fix bugs or migrate logic. Potentially very high depending on assets controlled.",
+        "contracts_involved": [
+          "ERC1967Upgrade",
+          "TransparentUpgradeableProxy",
+          "ProxyAdmin"
+        ]
+      }
+    },
+    {
+      "source": "deep_adversarial",
+      "details": {
+        "description": "Admin self-assignment brick via changeAdmin(address(this)) on Transparent proxies. No guard prevents setting the admin to the proxy’s own address, making admin functions externally uncallable.",
+        "severity": "High",
+        "red_team_argument": "If an operator or script mistakenly executes changeAdmin(proxyAddress), no EOA/contract can satisfy msg.sender == admin thereafter. Admin-only functions (changeAdmin/upgradeTo/upgradeToAndCall) become unreachable, effectively bricking upgrade control.",
+        "blue_team_argument": "This is a known edge case in the OZ transparent pattern. Some rescue paths exist only if the implementation has self-call hooks to invoke admin functions or if a timelocked/automation function within the proxy can self-call. Absent that, it’s unrecoverable. The practical mitigation is to add operational checks in ProxyAdmin wrappers and runbooks.",
+        "final_conclusion": "Present and severe as an operational brick risk. Prevent at the tooling/procedure level.",
+        "attack_scenario": "Deployment script bug substitutes new admin with proxy address. The transaction succeeds. Future upgrades or admin changes become impossible because no external caller can be the proxy address.",
+        "economic_impact": "Permanent loss of upgradability/control; potential need to abandon the proxy and redeploy, with associated migration costs and downtime.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade"
+        ],
+        "chained_findings": [
+          "G",
+          "H"
         ]
       }
     },
     {
       "source": "curated",
       "details": {
-        "description": "Initializer sets ownership/roles to the admin (often the ProxyAdmin) when it relies on msg.sender under Transparent during upgradeToAndCall, leading to role drift and potential lockout of owner-only functions.",
+        "description": "Admin self-assignment brick via changeAdmin(address(this)).",
+        "severity": "High",
+        "line_numbers": [
+          146,
+          147,
+          148,
+          149,
+          150,
+          151,
+          152,
+          153
+        ],
+        "red_team_argument": "_dispatchChangeAdmin decodes the new admin and calls _changeAdmin(newAdmin) without preventing newAdmin == address(this). Setting admin to the proxy address means only the proxy itself is the admin. No external account can ever satisfy msg.sender == _getAdmin(), permanently bricking all admin operations (upgrades, admin changes).",
+        "blue_team_argument": "Operationally forbid changeAdmin(address(this)) via governance policy and tooling. Wrap ProxyAdmin/ops scripts with guards that reject new admin equal to the proxy address. Consider custom admin-change logic that enforces newAdmin != address(this) if extending (not recommended).",
+        "final_conclusion": "A single bad changeAdmin can permanently brick upgradeability by setting admin to the proxy itself. This is a high-severity footgun and should be guarded operationally.",
+        "attack_scenario": "An engineer accidentally executes changeAdmin(proxyAddress). From that point on, no EOA can be admin; upgradeTo/upgradeToAndCall/changeAdmin become unreachable, locking the system indefinitely.",
+        "economic_impact": "Permanent loss of upgrade control and inability to rotate admin or patch vulnerabilities; potentially catastrophic governance failure.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade"
+        ],
+        "chained_findings": [
+          "H"
+        ]
+      }
+    },
+    {
+      "source": "deep_adversarial",
+      "details": {
+        "description": "F) Admin self-assignment brick via changeAdmin(address(this))",
+        "severity": "High",
+        "line_numbers": [
+          146,
+          147,
+          148,
+          149,
+          150,
+          151,
+          152,
+          153
+        ],
+        "red_team_argument": "_dispatchChangeAdmin decodes the new admin and calls _changeAdmin(newAdmin) without preventing newAdmin == address(this). Setting admin to the proxy address means only the proxy itself is the admin. No external account can ever satisfy msg.sender == _getAdmin(), permanently bricking all admin operations (upgrades, admin changes).",
+        "blue_team_argument": "Operationally forbid changeAdmin(address(this)) via governance policy and tooling. Wrap ProxyAdmin/ops scripts with guards that reject new admin equal to the proxy address. Consider custom admin-change logic that enforces newAdmin != address(this) if extending (not recommended).",
+        "final_conclusion": "A single bad changeAdmin can permanently brick upgradeability by setting admin to the proxy itself. This is a high-severity footgun and should be guarded operationally.",
+        "attack_scenario": "An engineer accidentally executes changeAdmin(proxyAddress). From that point on, no EOA can be admin; upgradeTo/upgradeToAndCall/changeAdmin become unreachable, locking the system indefinitely.",
+        "economic_impact": "Permanent loss of upgrade control and inability to rotate admin or patch vulnerabilities; potentially catastrophic governance failure.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade"
+        ],
+        "chained_findings": [
+          "H"
+        ]
+      }
+    },
+    {
+      "source": "analyze_upgrade_admin",
+      "details": {
+        "description": "ProxyAdmin mutators (upgrade, upgradeAndCall, changeProxyAdmin) in OZ 4.8.3 do not assert that ProxyAdmin is the current admin of the target Transparent proxy before mutating. They rely on the proxy-side admin gate. If ProxyAdmin is not the admin, these calls are forwarded to the implementation due to transparency dispatch, potentially invoking identically named functions on the implementation (notably UUPS upgradeTo/upgradeToAndCall), creating a role-confusion path.",
         "severity": "High",
         "line_numbers": [
           88,
+          92,
           95,
-          172,
-          174
+          103,
+          158,
+          172
         ],
-        "red_team_argument": "In _fallback the proxy treats the admin specially (lines 88-96). When the admin calls upgradeToAndCall, _dispatchUpgradeToAndCall delegates to _upgradeToAndCall (lines 172-176). Delegatecall preserves msg.sender as the original external caller (the admin/ProxyAdmin), so any initializer that does owner = msg.sender will set owner to the admin/ProxyAdmin rather than the intended governance/EOA. If the owner becomes the proxy\u2019s admin, Transparent prevents that admin from calling implementation functions, effectively bricking owner-only operations.",
-        "blue_team_argument": "This is a deployment/configuration footgun, not a code-exploitable bug. Avoid using msg.sender in initializers; instead pass the intended owner explicitly in initializer parameters. Alternatively, initialize from a non-admin EOA call after deployment (not via admin), or ensure governance/owner is a distinct address from the ProxyAdmin. Many OZ templates show initialize(address owner, ...) patterns to prevent this drift.",
-        "final_conclusion": "Valid footgun with concrete trigger via upgradeToAndCall; severity High due to frequent bricking when combined with role split behavior.",
-        "attack_scenario": "- Admin (ProxyAdmin) performs upgradeToAndCall with data encoding initialize().\n- initialize() assigns owner = msg.sender.\n- Owner becomes ProxyAdmin. Subsequent owner-only functions cannot be called because the admin cannot fall back to the implementation.\n- Governance is locked out until a new implementation providing a recovery path is deployed, if possible.",
-        "economic_impact": "Operational control loss over owner-only functions (pause, parameter changes, withdrawals), potentially leading to revenue loss or inability to react to incidents. May require costly migration.",
+        "red_team_argument": "If a Transparent proxy runs a UUPS implementation, and ProxyAdmin is NOT set as the proxy's admin, calling ProxyAdmin.upgrade(…) will hit TransparentUpgradeableProxy._fallback (ln 88–111). Since msg.sender != _getAdmin(), the call forwards to the implementation. If that implementation exposes UUPS upgradeTo/upgradeToAndCall, the forwarded call can succeed under the implementation's own access control (often the same ProxyAdmin address set as Ownable owner during initialization). This effectively upgrades the proxy without going through the Transparent admin gate, defeating the intended separation of concerns. This is a known footgun when mixing Transparent and UUPS patterns.",
+        "blue_team_argument": "Transparent proxy itself enforces admin-gated dispatch, and most Transparent deployments use implementations that do not expose upgradeTo functions. Even if an implementation is UUPS, authorizeUpgrade typically re-checks roles, blocking unauthorized upgrades. Operationally, teams can ensure not to mix UUPS implementations under Transparent proxies, or ensure the proxy admin and the implementation's upgrader are unified and correct.",
+        "final_conclusion": "By design, OZ ProxyAdmin.sol (v4.8.3) mutators do not assert admin ownership. When combined with a UUPS-style implementation, this creates a realistic role-confusion vector. Mitigate by either: (a) never using UUPS implementations behind Transparent proxies, or (b) adding an on-chain assertion in a ProxyAdmin wrapper that the EIP-1967 admin slot of the proxy equals address(this) before mutating, or (c) verifying admin equality off-chain (eth_getStorageAt) in deployment scripts and CI and gating execution.",
+        "attack_scenario": "Proxy A is Transparent, implementation I is UUPS with OwnableUpgradeable. ProxyAdmin P is not the admin of Proxy A (admin was rotated to Q). P.owner mistakenly calls P.upgrade(A, newI). Transparent proxy sees msg.sender=P != admin, so it forwards to I. I.upgradeTo runs UUPS checks and authorizeUpgrade(msg.sender=P). If P is still the owner of I (common after past initializations), authorizeUpgrade passes and I writes the new implementation into Proxy A. Upgrade executed bypassing Transparent admin Q.",
+        "economic_impact": "Unauthorized or unintended proxy upgrades can lead to loss of upgrade control and potential draining of all assets managed by the proxy (Critical operational impact; value at risk equals the full TVL controlled by the proxy).",
         "contracts_involved": [
+          "TransparentUpgradeableProxy.sol",
+          "ProxyAdmin.sol",
+          "ERC1967Upgrade.sol"
+        ],
+        "chained_findings": [
+          "Selector-collision between Transparent admin functions and UUPS functions on implementation (upgradeTo/upgradeToAndCall)."
+        ]
+      }
+    },
+    {
+      "source": "deep_adversarial",
+      "details": {
+        "description": "ProxyAdmin mutators do not assert that ProxyAdmin is the current admin of the target Transparent proxy before attempting upgrades/admin changes.",
+        "severity": "High",
+        "red_team_argument": "If ProxyAdmin is not the actual admin, calling ProxyAdmin.upgrade/upgradeAndCall/changeProxyAdmin will be forwarded by the proxy to the implementation. If the implementation exposes UUPS upgradeTo/upgradeToAndCall and ProxyAdmin remains authorized in the implementation’s _authorizeUpgrade, the call will upgrade the proxy anyway, bypassing the intended transparent admin gate. This undermines role separation and can produce surprising or unsafe upgrades.",
+        "blue_team_argument": "This is a known OZ design trade-off: ProxyAdmin assumes it is admin. Operators should verify admin via getProxyAdmin or out-of-band config before mutating, and avoid mixing Transparent with UUPS-enabled implementations unless strictly controlled. Continuous monitoring can alert when admin deviates from ProxyAdmin.",
+        "final_conclusion": "Present and potentially severe in mixed Transparent+UUPS setups. Enforce pre-checks in operational tooling or add wrapper functions that assert ProxyAdmin is the admin before mutating.",
+        "attack_scenario": "1) Proxy uses Transparent pattern; implementation is UUPS with upgradeTo guarded by owner=ProxyAdmin. 2) Someone changes the proxy admin away from ProxyAdmin. 3) The ProxyAdmin owner calls ProxyAdmin.upgrade(proxy, newImpl). 4) Since ProxyAdmin isn’t admin, the call hits proxy fallback and delegates into implementation’s UUPS upgradeTo via the same selector. 5) Because ProxyAdmin is still the UUPS owner, _authorizeUpgrade passes and the proxy implementation is upgraded, bypassing transparent admin controls.",
+        "economic_impact": "Unauthorized or unreviewed upgrade, potentially pointing to a malicious implementation and resulting in full fund loss. At minimum, governance/process violations with high blast radius.",
+        "contracts_involved": [
+          "ProxyAdmin",
           "TransparentUpgradeableProxy",
-          "ERC1967Upgrade",
-          "ProxyAdmin"
+          "ERC1967Upgrade"
         ],
         "chained_findings": [
           "H"
@@ -80,57 +430,181 @@
     {
       "source": "curated",
       "details": {
-        "description": "Setting the admin to the proxy\u2019s own address changeAdmin(address(this)) bricks admin operations because no EOA can satisfy msg.sender == admin thereafter.",
+        "description": "ProxyAdmin mutators missing explicit 'I am current admin' assert.",
         "severity": "High",
-        "line_numbers": [
-          114,
-          115,
-          116,
-          124,
-          125,
-          126,
-          127,
-          146,
-          151,
-          190
-        ],
-        "red_team_argument": "_dispatchChangeAdmin decodes the new admin and calls _changeAdmin without guarding against newAdmin == address(this); only zero-value is enforced. If set to address(this), future admin checks (msg.sender == _getAdmin()) can only be satisfied by the proxy itself, making external admin ops (upgrade/changeAdmin) unreachable. Upgrades become impossible.",
-        "blue_team_argument": "Operational procedures should forbid setting admin to address(this). Some recovery may be possible if the implementation exposes a function that performs an external call to the proxy\u2019s changeAdmin, since a call from the proxy (address(this)) would pass the admin check. However, most implementations don\u2019t include such escape hatches.",
-        "final_conclusion": "Valid bricking condition; severity High. Add procedural and tooling safeguards to prevent self-assignment.",
-        "attack_scenario": "An operator mistakenly executes changeProxyAdmin(proxy, address(proxy)). The proxy\u2019s admin becomes itself. Subsequent attempts to upgrade or change admin fail, permanently freezing upgrades.",
-        "economic_impact": "Permanent loss of upgradeability and admin control; costly migrations may be required.",
+        "red_team_argument": "ProxyAdmin’s mutating functions (changeProxyAdmin/upgrade/upgradeAndCall) do not assert that ProxyAdmin is the current admin of the target proxy. If it isn’t, calls may be transparently forwarded to the implementation instead of reverting via admin dispatcher. In the worst case (e.g., UUPS implementation exposing upgradeTo selectors), this can unintentionally hit implementation upgrade routines (subject to their own auth) or otherwise fail in confusing ways.",
+        "blue_team_argument": "Operationally, always check getProxyAdmin(proxy) before using ProxyAdmin mutators; if the call reverts or returns a different admin, do not proceed. Ensure implementations do not expose functions with the same selectors as ITransparentUpgradeableProxy admin ops unless properly authorized. Maintain strict registry mapping proxies to their controlling ProxyAdmin and enforce it in off-chain tooling.",
+        "final_conclusion": "Design relies on off-chain discipline: ProxyAdmin mutators do not on-chain assert admin ownership of the proxy. Without pre-checks, calls may be forwarded to implementation or behave unexpectedly.",
+        "attack_scenario": "Ops attempts upgrade via ProxyAdmin on a proxy that was already re-assigned to a new admin. The call doesn’t hit the admin dispatcher and instead forwards to the implementation. If the implementation is UUPS and auth is misconfigured, it could execute an unintended upgrade path.",
+        "economic_impact": "Unexpected behavior or silent failures during upgrades; in misconfigured systems, potential unauthorized upgrades via implementation codepaths.",
         "contracts_involved": [
+          "ProxyAdmin",
           "TransparentUpgradeableProxy",
-          "ERC1967Upgrade"
+          "UUPS-style Implementation (if present)"
         ],
-        "chained_findings": []
+        "chained_findings": [
+          "Selector-collision between Transparent admin functions and UUPS functions on implementation (upgradeTo/upgradeToAndCall)."
+        ]
       }
     },
     {
-      "source": "curated",
+      "source": "interactions",
       "details": {
-        "description": "ETH can be inadvertently stuck in the proxy if sent with upgradeToAndCall but not consumed by the initializer, and may be unrecoverable due to admin call restrictions.",
+        "description": "Selector-collision exposure of privileged operations via the Transparent proxy’s fallback. Non-admin calls to TransparentUpgradeableProxy are delegated to the implementation. If the implementation defines functions with the same selectors as admin-only proxy operations (upgradeTo, upgradeToAndCall, changeAdmin, admin, implementation) and these implementation functions are insufficiently restricted (e.g., unprotected upgradeTo that writes to the EIP-1967 implementation slot), then any user can call those selectors on the proxy and execute the implementation’s logic in the proxy’s context via delegatecall. This can lead to unauthorized upgrades, admin changes, or storage corruption at the proxy level.",
+        "severity": "High",
+        "line_numbers": [
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          83,
+          84,
+          85,
+          86,
+          87,
+          88,
+          89,
+          90
+        ],
+        "red_team_argument": "An attacker targets a proxy whose current implementation accidentally exposes a permissive upgradeTo(address) or changeAdmin(address). Because they are not the proxy admin, their call to proxy.upgradeTo is delegated to the implementation. The implementation’s function runs via delegatecall in the proxy’s context and writes to the EIP-1967 implementation/admin slots. The attacker upgrades the proxy to a malicious implementation and drains funds or bricks the system.",
+        "blue_team_argument": "The transparent pattern advises using a dedicated admin and ensuring implementations do not expose clashing admin function selectors or that such functions are properly access-controlled (e.g., UUPSUpgradeable with proper authorization). This is a configuration/deployment issue rather than a flaw in the proxy itself.",
+        "final_conclusion": "Risk is real and material at the system level: the combination of TransparentUpgradeableProxy with an implementation that exposes clashing, weakly-authorized functions enables arbitrary takeover. Enforce strict access control on any implementation functions with selectors that clash with proxy admin functions or avoid exposing such selectors entirely.",
+        "attack_scenario": "- Attacker calls proxy.upgradeTo(maliciousImpl) as a non-admin user.\n- Transparent proxy delegates the call to the current implementation.\n- Implementation’s unprotected upgradeTo writes to the EIP-1967 implementation slot (in proxy’s storage context), upgrading the proxy to attacker-controlled code.\n- Attacker drains assets from proxy-held funds via the new implementation.",
+        "economic_impact": "Potential full loss of funds controlled by the proxy and permanent governance/control loss (admin slot hijack or bricking).",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "Proxy",
+          "ImplementationContract (user-defined)"
+        ],
+        "chained_findings": [
+          "Function selector collision between proxy admin selectors and implementation functions",
+          "Delegatecall executes implementation code in proxy storage context"
+        ]
+      }
+    },
+    {
+      "source": "analyze_upgrade_admin",
+      "details": {
+        "description": "Admin cannot fallback to implementation: enforced role split. The Transparent proxy prevents the admin from invoking implementation functions; using the same address for both 'admin' and normal operational roles (e.g., pauser, owner) will block those calls and can cause unexpected DoS of admin’s ability to operate the app.",
         "severity": "Medium",
         "line_numbers": [
-          158,
-          159,
-          161,
-          162,
+          88,
+          103
+        ],
+        "red_team_argument": "If deployers set the Proxy admin to the same EOA that is expected to call business logic (e.g., pause(), mint(), governance actions), every such call reverts with \"admin cannot fallback to proxy target\" (ln 103). In an incident, the team’s admin EOA may be unable to pause or mitigate, causing downtime or incident escalation.",
+        "blue_team_argument": "This is explicitly documented in OZ and is the core of the Transparent pattern: the admin address is for upgrades only. Proper deployments use a dedicated ProxyAdmin contract as admin and separate EOAs/contracts for operational roles.",
+        "final_conclusion": "Enforcement works as intended, but it is an operational footgun. Ensure strict role separation: set ProxyAdmin (or a Timelock/Safe) as proxy admin, and distinct addresses for owner/pauser/governance. Validate configuration in deployment scripts and runbooks.",
+        "attack_scenario": "Team deploys with admin = Ops EOA. Later they try to call pause() through the proxy during an incident. The call reverts because admin cannot fallback, preventing timely mitigation.",
+        "economic_impact": "Operational DoS: inability to execute critical controls (e.g., pause/unpause) during incidents. Secondary financial impact depends on protocol exposure.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy.sol"
+        ]
+      }
+    },
+    {
+      "source": "deep_adversarial",
+      "details": {
+        "description": "B) Transparent subclass externals/publics can shadow admin ops",
+        "severity": "Medium",
+        "line_numbers": [
+          53,
+          54,
+          55,
+          56
+        ],
+        "red_team_argument": "The contract warns that adding external/public functions in a subclass can create selector clashes with ITransparentUpgradeableProxy’s admin ops. If a subclass implements, for example, function upgradeTo(address), the EVM will dispatch directly to that function instead of the internal fallback admin dispatcher, potentially making admin operations inaccessible or altering their semantics.",
+        "blue_team_argument": "Do not extend TransparentUpgradeableProxy with additional external/public functions. If extension is unavoidable, systematically check for selector collisions with ITransparentUpgradeableProxy’s functions and ensure no shadowing. Prefer composition over inheritance; treat this proxy as final.",
+        "final_conclusion": "The risk is inherent in the design and explicitly documented. Avoid subclassing with new externals/publics to prevent shadowing admin operations and breaking upgradeability.",
+        "attack_scenario": "A team extends TransparentUpgradeableProxy and adds an external function changeAdmin(address) for custom logic. The selector collides and the admin dispatcher is never reached; upgrades and admin changes become inaccessible, bricking lifecycle management.",
+        "economic_impact": "Loss of upgrade/admin capabilities due to selector shadowing; potential permanent governance lockout.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy"
+        ],
+        "chained_findings": [
+          "G"
+        ]
+      }
+    },
+    {
+      "source": "deep_adversarial",
+      "details": {
+        "description": "Beacon runtime DoS if the beacon returns a non-contract implementation. BeaconProxy._implementation() blindly returns IBeacon(_getBeacon()).implementation() and Proxy fallback delegates to it without a code-size check.",
+        "severity": "Medium",
+        "red_team_argument": "If a non-standard or buggy beacon later returns an EOA/zero-code address, delegatecall will execute no code. Many state-changing calls will silently succeed but do nothing or revert unpredictably, effectively DoSing the proxy and potentially locking funds behind it.",
+        "blue_team_argument": "Initial setting uses ERC1967Upgrade._upgradeBeaconToAndCall which requires both beacon and its implementation to be contracts. The canonical OZ UpgradeableBeacon also enforces Address.isContract on upgrades. On Ethereum post-Shanghai (EIP-6780), selfdestruct no longer clears code for long-lived contracts, reducing accidental zero-code states. The risk mainly exists if a custom beacon violates the IBeacon contract invariant.",
+        "final_conclusion": "Present as a footgun contingent on a non-standard beacon. Safe with OZ UpgradeableBeacon, unsafe if the beacon can output a non-contract at runtime.",
+        "attack_scenario": "Operator replaces the OZ beacon with a custom beacon that dynamically resolves implementation and erroneously returns an EOA. After that change, every call to the proxy delegates to an address with no code, causing silent no-ops and breaking the app. Any ETH held by the proxy becomes stuck if withdrawal methods can no longer execute.",
+        "economic_impact": "Service-wide DoS; inability to upgrade or operate logic functions; potential lock of all funds held by the proxy until beacon fixed or proxy replaced via out-of-band recovery (if any).",
+        "contracts_involved": [
+          "BeaconProxy",
+          "ERC1967Upgrade",
+          "Proxy",
+          "IBeacon"
+        ],
+        "chained_findings": [
+          "D"
+        ]
+      }
+    },
+    {
+      "source": "deep_adversarial",
+      "details": {
+        "description": "D) Stuck ETH sink around upgradeToAndCall/receive",
+        "severity": "Medium",
+        "line_numbers": [
+          103,
           172,
+          173,
+          174,
+          175,
           176,
+          177,
           190,
           191,
           192
         ],
-        "red_team_argument": "_dispatchUpgradeToAndCall does not call _requireZeroValue, so the admin can send ETH with upgradeToAndCall. If the initializer reverts late or doesn\u2019t forward/use msg.value, ETH remains at the proxy address. Admin-only calls enforce zero value for other admin ops, and the admin cannot fallback to implementation, so the admin cannot use implementation withdraw functions to recover the funds.",
-        "blue_team_argument": "This is usage-dependent. If the initializer is designed to handle/forward value or the implementation exposes safe, non-admin-only withdrawal functions callable by a non-admin EOA, funds are not stuck. Operationally, avoid sending value with upgradeToAndCall unless strictly needed, and provide explicit withdrawal paths callable by appropriate roles (not the proxy admin).",
-        "final_conclusion": "Realistic footgun; severity Medium because it can lock funds when combined with Transparent admin restrictions.",
-        "attack_scenario": "- Admin calls upgradeToAndCall with msg.value > 0 and initializer that doesn\u2019t consume or forwards ETH.\n- Transaction succeeds; proxy now holds ETH balance.\n- Withdrawal function exists but is onlyOwner; owner is not the admin or is the admin (and thus blocked by Transparent), making recovery impossible.",
-        "economic_impact": "Locked ETH at the proxy balance; depending on amount, can be material. May also lock protocol fees accidentally sent during upgrades.",
+        "red_team_argument": "_dispatchUpgradeToAndCall is payable and does not enforce msg.value == 0, so the admin can send ETH during upgrades (lines 172-177). If the delegated initializer doesn’t forward or refund that ETH, it remains on the proxy’s balance. The admin cannot directly call implementation functions (line 103 revert), so without a dedicated sweep path callable by a non-admin or via a subsequent upgradeAndCall that intentionally forwards ETH out, funds can become practically stuck.",
+        "blue_team_argument": "Operationally enforce msg.value == 0 for upgrades (e.g., ProxyAdmin wrappers/scripts enforce zero-value). If value must be sent, ensure the initializer immediately forwards it to a known recipient or accounts for it explicitly. Provide a public or role-gated sweep mechanism in implementation that non-admin can trigger (or callable via a safe post-upgradeAndCall) to avoid stranded ETH.",
+        "final_conclusion": "ETH can be inadvertently stranded on the proxy if sent via upgradeToAndCall and not handled by the initializer. This is a known footgun of the Transparent pattern’s admin path.",
+        "attack_scenario": "An ops engineer mistakenly includes 10 ETH in an upgradeToAndCall. The initializer ignores msg.value. ETH remains at the proxy. Admin cannot call withdraw on the implementation due to transparency. Without a prebuilt sweeping function callable by a non-admin, the ETH remains stuck.",
+        "economic_impact": "Stranded funds (ETH) at the proxy. Remediation may require additional upgrades and custom sweep logic; meantime funds are illiquid.",
         "contracts_involved": [
           "TransparentUpgradeableProxy",
-          "ERC1967Upgrade",
-          "Proxy"
+          "ERC1967Upgrade (delegatecall path)"
         ],
         "chained_findings": [
           "H"
@@ -138,142 +612,80 @@
       }
     },
     {
-      "source": "curated",
+      "source": "deep_adversarial",
       "details": {
-        "description": "Extending TransparentUpgradeableProxy with new external/public functions can shadow the internal admin dispatch (selector clashes), making admin ops inaccessible.",
-        "severity": "Medium",
-        "line_numbers": [
-          53,
-          56,
-          88,
-          103
-        ],
-        "red_team_argument": "The WARNING comment states new externals can clash. Because admin ops are implemented via internal dispatch in _fallback, any derived external function with the same selector as changeAdmin/upgradeTo/upgradeToAndCall/admin/implementation will be chosen over the internal dispatch. This can permanently block admin operations and upgrades.",
-        "blue_team_argument": "Do not subclass TransparentUpgradeableProxy to add external/public functions. If unavoidable, rigorously audit for selector clashes against ITransparentUpgradeableProxy and ensure uniqueness. Prefer composing an external admin interface (ProxyAdmin) rather than inheritance.",
-        "final_conclusion": "Confirmed design footgun documented in the contract; severity Medium because it can permanently disable admin operations if misused.",
-        "attack_scenario": "A developer adds function upgradeTo(address) external in a subclass for logging. Its selector matches the admin op; the admin path gets shadowed, preventing legitimate upgrades forever.",
-        "economic_impact": "Loss of upgradeability and admin control; may require redeploying the proxy with state migration.",
-        "contracts_involved": [
-          "TransparentUpgradeableProxy"
-        ],
-        "chained_findings": []
-      }
-    },
-    {
-      "source": "curated",
-      "details": {
-        "description": "Initializer that reads the proxy admin (EIP-1967 _ADMIN_SLOT) during construction-time _data call sees it unset (zero address) because admin is assigned after the initializer runs.",
+        "description": "E) Init reads admin/_ADMIN_SLOT before it is set",
         "severity": "Medium",
         "line_numbers": [
           63,
+          64,
+          65,
+          66,
+          67,
+          68,
           69
         ],
-        "red_team_argument": "The constructor calls ERC1967Proxy(_logic, _data) first, which can delegatecall initialize() before admin is set. Only after that it calls _changeAdmin(admin_). Any initializer that reads _getAdmin/EIP-1967 admin slot will observe the zero address and may misconfigure roles or guards.",
-        "blue_team_argument": "Don\u2019t rely on reading the proxy\u2019s admin slot from within the initializer. Pass required admin/governance addresses explicitly as initializer parameters. If you must rely on msg.sender or admin slot, avoid constructor-time _data initialization and instead perform upgradeToAndCall from the desired admin after deployment (mind A).",
-        "final_conclusion": "Confirmed ordering footgun; severity Medium due to potential misconfiguration at deployment time.",
-        "attack_scenario": "An initializer sets critical ACL to _getAdmin() or assumes a nonzero admin; observing address(0), it configures zero-address permissions or skips setup, creating a stuck or unsafe state.",
-        "economic_impact": "Misconfigured access control; may require redeploy/migration to fix.",
+        "red_team_argument": "The constructor calls ERC1967Proxy(_logic, _data) first (delegatecalling the initializer) and only then sets the admin via _changeAdmin(admin_) (lines 63-69). Any initializer logic that reads or relies on the EIP-1967 admin slot during this call will observe address(0), potentially failing checks or initializing with incorrect assumptions.",
+        "blue_team_argument": "Avoid reading proxy admin in the initializer executed via _data. If admin context is required, deploy with empty _data, set admin, and then have a non-admin EOA call the initializer; or design initializers to accept explicit parameters (e.g., initial admin/roles) instead of reading from proxy admin storage.",
+        "final_conclusion": "Call-order footgun exists: admin slot is unset during the _data initializer delegatecall. Design initializers to not depend on proxy admin being set or initialize after deployment via a non-admin caller.",
+        "attack_scenario": "Initializer contains a sanity check like require(IERC1967(address(this)).getAdmin() != address(0)). The check fails during deployment initialization because the admin slot is not yet set, reverting deployment or causing incorrect defaults.",
+        "economic_impact": "Deployment failure or mis-initialization of critical role/permission state, leading to service disruption or later governance issues.",
         "contracts_involved": [
           "TransparentUpgradeableProxy",
-          "ERC1967Proxy"
+          "ERC1967Proxy",
+          "Implementation (upgradeable)"
         ],
         "chained_findings": [
-          "A",
-          "H"
+          "A"
         ]
       }
     },
     {
-      "source": "curated",
+      "source": "analyze_upgrade_admin",
       "details": {
-        "description": "Role-split footgun: the admin cannot call implementation functions through the proxy, by design of Transparent, which can brick functionality if the admin is also set as the implementation\u2019s owner/governance.",
+        "description": "ETH handling on upgradeToAndCall: value is permitted and forwarded to the post-upgrade delegatecall; other admin paths require zero value. This can accidentally leave ETH in the proxy or revert if the initializer is non-payable.",
         "severity": "Medium",
         "line_numbers": [
-          34,
-          38,
-          88,
-          104
+          120,
+          121,
+          134,
+          135,
+          146,
+          147,
+          158,
+          159,
+          172,
+          174
         ],
-        "red_team_argument": "Comments and code enforce that when msg.sender == admin, only admin ops are allowed; any other call reverts with \"admin cannot fallback to proxy target\". If the implementation\u2019s owner/role is set to the admin, owner-only functions become uncallable, effectively bricking critical functionality.",
-        "blue_team_argument": "This is an intentional property of the Transparent pattern to avoid selector clashes. Maintain strict role separation: the proxy admin should only perform upgrades, while a separate governance/owner address controls implementation functionality. Initialize with explicit owner different from the admin.",
-        "final_conclusion": "Inherent to Transparent proxies; severity Medium due to frequent operational pitfalls when roles are not split correctly.",
-        "attack_scenario": "Governance multisig is used as both ProxyAdmin and Ownable owner. Attempts to call owner-only functions via the proxy revert, blocking upgrades or parameter changes during emergencies.",
-        "economic_impact": "Inability to perform time-sensitive admin actions on the implementation; potential financial loss due to frozen parameters or inability to pause/respond.",
+        "red_team_argument": "An admin mistakenly sends ETH with upgradeToAndCall to an initializer that is payable but does not transfer or handle funds; ETH remains in the proxy balance. If the implementation lacks a withdrawal path, those funds are effectively stuck until a future upgrade. Conversely, if the initializer is not payable, the upgrade reverts, potentially causing operational delays during critical upgrades.",
+        "blue_team_argument": "Funds are not truly stranded as long as a later implementation adds a withdrawal function or the current implementation already exposes a way to move ETH. Teams can also enforce msg.value == 0 in their ProxyAdmin wrappers or governance pipelines unless an upgrade explicitly requires ETH for initialization.",
+        "final_conclusion": "Intentional design: only upgradeToAndCall is payable to allow funded initializations. Risk is operational. Mitigate by: (a) defaulting to msg.value == 0 in upgrade/runbooks and requiring an explicit flag to send ETH; (b) making initializers non-payable unless ETH is strictly required; (c) providing a canonical withdraw pattern in implementations.",
+        "attack_scenario": "Admin sends 100 ETH with upgradeToAndCall to a storage-only initializer. ETH stays in the proxy’s balance. No withdraw function exists; funds remain stuck until a future upgrade (which may be delayed or governance-blocked).",
+        "economic_impact": "Temporary or prolonged lock of ETH sent during an upgrade; magnitude equals the inadvertent value transferred.",
         "contracts_involved": [
-          "TransparentUpgradeableProxy"
+          "TransparentUpgradeableProxy.sol",
+          "ERC1967Upgrade.sol",
+          "Proxy.sol"
         ],
         "chained_findings": [
-          "A",
-          "D"
+          "Pairs with F3: admin can purposely or accidentally transfer value into init logic."
         ]
       }
     },
     {
-      "source": "curated",
+      "source": "deep_adversarial",
       "details": {
-        "description": "Beacon runtime DoS if beacon.implementation() returns non-contract. BeaconProxy forwards every call to the address returned by IBeacon(_getBeacon()).implementation() without verifying code presence at that address.",
+        "description": "G) ProxyAdmin mutators missing explicit 'I am current admin' assert",
         "severity": "Medium",
-        "line_numbers": [
-          44,
-          45,
-          46
-        ],
-        "red_team_argument": "Because _implementation() blindly trusts the beacon, if a malicious or misconfigured beacon returns an EOA or address(0), the proxy\u2019s fallback will DELEGATECALL to an address with no code. In practice, this can cause calls to become effective no-ops that return empty data or revert in upstream decoding, producing a functional DoS/outage across all proxied methods. If the beacon owner is compromised or a custom IBeacon lacks the isContract check on upgrades, the entire app behind the beacon can be bricked instantly without touching the proxy.",
-        "blue_team_argument": "- When using OpenZeppelin\u2019s UpgradeableBeacon, every upgrade enforces Address.isContract(newImplementation), preventing upgrades to EOAs/zero. The BeaconProxy constructor also initializes via ERC1967Upgrade._upgradeBeaconToAndCall, which checks both beacon and initial implementation are contracts.\n- BeaconProxy exposes no external admin/upgrade surface; only the beacon owner can change implementation. With a trustworthy OZ UpgradeableBeacon owned by a secure multisig, practical exploitability is low.\n- Monitoring can alert if the beacon ever points to a non-contract address.",
-        "final_conclusion": "Real risk exists only if the IBeacon is non-OZ or compromised. The proxy itself performs no runtime code check, so trust in the beacon is critical. Severity Medium due to system-wide outage potential if a bad implementation address is set.",
-        "attack_scenario": "1) Attacker compromises the beacon owner. 2) They upgrade the beacon to point to an EOA/zero address. 3) All subsequent user calls via BeaconProxy delegate to empty code, resulting in silent no-ops or downstream reverts. 4) Protocol functions are effectively unusable until beacon is corrected.",
-        "economic_impact": "End-to-end outage of the proxied application. Lost revenue, emergency response costs, potential liquidations or inability to execute critical operations. Impact scales with TVL and business dependency on the proxy.",
-        "contracts_involved": [
-          "BeaconProxy",
-          "ERC1967Upgrade",
-          "Proxy",
-          "IBeacon",
-          "UpgradeableBeacon"
-        ],
-        "chained_findings": [
-          "D"
-        ]
-      }
-    },
-    {
-      "source": "curated",
-      "details": {
-        "description": "Stuck ETH sink around receive/initialization path. The BeaconProxy constructor is payable but the initialization delegatecall (via _upgradeBeaconToAndCall) does not forward value. Ether sent at deployment can remain stranded at the proxy if the implementation doesn\u2019t expose a withdrawal path.",
-        "severity": "Low",
-        "line_numbers": [
-          18,
-          30,
-          31
-        ],
-        "red_team_argument": "- Line 30 marks the constructor payable, and line 31 initializes via _upgradeBeaconToAndCall. The standard OZ routine uses functionDelegateCall (no value). Any ETH sent on deployment remains on the proxy balance, not in the implementation\u2019s logic. If the implementation lacks a drain function, funds are stuck.\n- Additionally, since BeaconProxy inherits Proxy, it has receive/fallback. If later implementations don\u2019t support receiving ETH or no withdraw method exists, forced ETH (via selfdestruct) can accumulate and be unclaimable, affecting accounting or creating griefing vectors.",
-        "blue_team_argument": "- This is a common, documented property of proxies. Best practice is to avoid sending ETH during proxy deployment unless the implementation includes a reclaim path, and to implement explicit withdraw/recovery methods on the logic contract.\n- The proxy will revert on direct ETH sends if the implementation lacks payable receive/fallback, preventing accidental deposits in most user flows (forced ETH remains theoretically possible).",
-        "final_conclusion": "Not a critical vuln but a known footgun. If deployers send ETH to the proxy at construction or later via forced transfers, it may become irrecoverable absent an explicit withdrawal function in the implementation.",
-        "attack_scenario": "1) Deployer sends msg.value > 0 when deploying BeaconProxy. 2) Initialization executes without forwarding value, leaving ETH at the proxy. 3) The implementation has no withdraw function. 4) ETH is permanently stuck at the proxy address.",
-        "economic_impact": "Funds stuck at the proxy address. Magnitude depends on accidental deployment value or subsequent forced transfers; typically low but can be material if a misconfigured deployment sends significant ETH.",
-        "contracts_involved": [
-          "BeaconProxy",
-          "Proxy",
-          "ERC1967Upgrade"
-        ],
-        "chained_findings": [
-          "C"
-        ]
-      }
-    },
-    {
-      "source": "curated",
-      "details": {
-        "description": "ProxyAdmin mutators do not explicitly assert that ProxyAdmin is the current admin of the target proxy before attempting upgrades/admin changes, relying on proxy-side checks and risking misrouted calls or confusing failures.",
-        "severity": "Low",
-        "line_numbers": [],
-        "red_team_argument": "In OZ ProxyAdmin v4.8.3, functions like upgrade, upgradeAndCall, and changeProxyAdmin simply forward to the proxy and are onlyOwner-gated; they do not first assert proxy.admin() == address(this). If ProxyAdmin is not the admin, calls may be forwarded to the implementation as non-admin (because of Transparent\u2019s behavior), potentially hitting an implementation fallback or colliding selector, producing unexpected behavior or opaque reverts.",
-        "blue_team_argument": "Even without an explicit assert, the Transparent proxy prevents unauthorized admin actions. The practical impact is mainly UX/operational: clearer assertions can prevent mistakes but do not create a new exploit path. Projects can add off-chain checks or extend ProxyAdmin with explicit admin verification before mutators.",
-        "final_conclusion": "Operational footgun; severity Low. Consider custom ProxyAdmin wrappers that assert admin ownership before mutating calls.",
-        "attack_scenario": "Operator upgrades the wrong proxy instance where ProxyAdmin isn\u2019t admin. The call doesn\u2019t perform the upgrade but instead reaches the implementation fallback, resulting in a misleading revert or no-op, delaying incident response.",
-        "economic_impact": "Operational delays and potential misconfigurations; low direct financial impact unless combined with selector clashes.",
+        "red_team_argument": "ProxyAdmin’s mutating functions (changeProxyAdmin/upgrade/upgradeAndCall) do not assert that ProxyAdmin is the current admin of the target proxy. If it isn’t, calls may be transparently forwarded to the implementation instead of reverting via admin dispatcher. In the worst case (e.g., UUPS implementation exposing upgradeTo selectors), this can unintentionally hit implementation upgrade routines (subject to their own auth) or otherwise fail in confusing ways.",
+        "blue_team_argument": "Operationally, always check getProxyAdmin(proxy) before using ProxyAdmin mutators; if the call reverts or returns a different admin, do not proceed. Ensure implementations do not expose functions with the same selectors as ITransparentUpgradeableProxy admin ops unless properly authorized. Maintain strict registry mapping proxies to their controlling ProxyAdmin and enforce it in off-chain tooling.",
+        "final_conclusion": "Design relies on off-chain discipline: ProxyAdmin mutators do not on-chain assert admin ownership of the proxy. Without pre-checks, calls may be forwarded to implementation or behave unexpectedly.",
+        "attack_scenario": "Ops attempts upgrade via ProxyAdmin on a proxy that was already re-assigned to a new admin. The call doesn’t hit the admin dispatcher and instead forwards to the implementation. If the implementation is UUPS and auth is misconfigured, it could execute an unintended upgrade path.",
+        "economic_impact": "Unexpected behavior or silent failures during upgrades; in misconfigured systems, potential unauthorized upgrades via implementation codepaths.",
         "contracts_involved": [
           "ProxyAdmin",
-          "TransparentUpgradeableProxy"
+          "TransparentUpgradeableProxy",
+          "UUPS-style Implementation (if present)"
         ],
         "chained_findings": [
           "B"
@@ -281,354 +693,466 @@
       }
     },
     {
-      "source": "deep_adversarial",
+      "source": "curated",
       "details": {
-        "description": "C) Beacon runtime DoS if beacon.implementation() returns non-contract. BeaconProxy forwards every call to the address returned by IBeacon(_getBeacon()).implementation() without verifying code presence at that address.",
+        "description": "Initializer owner/role drift: initializers that use msg.sender under Transparent set owner/roles to the proxy or deployer unexpectedly.",
         "severity": "Medium",
         "line_numbers": [
-          44,
-          45,
-          46
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          172,
+          173,
+          174,
+          175,
+          176,
+          177
         ],
-        "red_team_argument": "Because _implementation() blindly trusts the beacon (lines 44-46), if a malicious or misconfigured beacon returns an EOA or address(0), the proxy\u2019s fallback will DELEGATECALL to an address with no code. In practice, this can cause calls to become effective no-ops that return empty data or revert in upstream decoding, producing a functional DoS/outage across all proxied methods. If the beacon owner is compromised or a custom IBeacon lacks the isContract check on upgrades, the entire app behind the beacon can be bricked instantly without touching the proxy.",
-        "blue_team_argument": "- When using OpenZeppelin\u2019s UpgradeableBeacon, every upgrade enforces Address.isContract(newImplementation), preventing upgrades to EOAs/zero. The BeaconProxy constructor also initializes via ERC1967Upgrade._upgradeBeaconToAndCall, which checks both beacon and initial implementation are contracts.\n- BeaconProxy exposes no external admin/upgrade surface; only the beacon owner can change implementation. With a trustworthy OZ UpgradeableBeacon owned by a secure multisig, practical exploitability is low.\n- Monitoring can alert if the beacon ever points to a non-contract address.",
-        "final_conclusion": "Real risk exists only if the IBeacon is non-OZ or compromised. The proxy itself performs no runtime code check, so trust in the beacon is critical. Severity Medium due to system-wide outage potential if a bad implementation address is set.",
-        "attack_scenario": "1) Attacker compromises the beacon owner. 2) They upgrade the beacon to point to an EOA/zero address. 3) All subsequent user calls via BeaconProxy delegate to empty code, resulting in silent no-ops or downstream reverts. 4) Protocol functions are effectively unusable until beacon is corrected.",
-        "economic_impact": "End-to-end outage of the proxied application. Lost revenue, emergency response costs, potential liquidations or inability to execute critical operations. Impact scales with TVL and business dependency on the proxy.",
+        "red_team_argument": "During deployment, TransparentUpgradeableProxy calls ERC1967Proxy(_logic, _data) before setting the admin, which performs a delegatecall into the implementation. In that delegatecall, msg.sender is the proxy (or the deployer depending on pattern). Any initializer (e.g., OwnableUpgradeable’s __Ownable_init) that sets owner = msg.sender will set owner to the proxy or to the deployer, not the intended EOA or governance.",
+        "blue_team_argument": "Do not rely on msg.sender in initializers. Use an initializer that takes an explicit owner/governance parameter (e.g., initialize(address initialOwner) + _transferOwnership(initialOwner)) and pass that in _data or via upgradeToAndCall. Alternatively, deploy with empty _data and have the intended owner call the initializer via the proxy post-deploy.",
+        "final_conclusion": "Concrete footgun: initializers that rely on msg.sender can misassign ownership/roles when used with Transparent proxies. Use explicit parameters or post-deploy user-called initialization.",
+        "attack_scenario": "Deployer uses TransparentUpgradeableProxy(_logic, admin_, abi.encodeWithSelector(MyImpl.initialize.selector)) and the initializer calls __Ownable_init() which sets owner = msg.sender. Owner becomes the proxy or deployer, so governance is misconfigured and privileged actions are blocked or captured.",
+        "economic_impact": "Loss of administrative control and inability to perform privileged operations; potential inability to upgrade or recover assets guarded by onlyOwner, causing systemic loss or downtime.",
         "contracts_involved": [
-          "BeaconProxy",
-          "ERC1967Upgrade",
-          "Proxy",
-          "IBeacon",
-          "UpgradeableBeacon"
+          "TransparentUpgradeableProxy",
+          "ERC1967Proxy",
+          "Implementation (upgradeable)"
         ],
         "chained_findings": [
+          "E",
+          "H",
           "D"
         ]
       }
     },
     {
-      "source": "deep_adversarial",
+      "source": "analyze_proxy_storage",
       "details": {
-        "description": "D) Stuck ETH sink around receive/initialization path. The BeaconProxy constructor is payable but the initialization delegatecall (via _upgradeBeaconToAndCall) does not forward value. Ether sent at deployment can remain stranded at the proxy if the implementation doesn\u2019t expose a withdrawal path.",
-        "severity": "Low",
+        "description": "Initializer reading admin()/_ADMIN_SLOT during Transparent deployment sees zero because admin is set after the initializer delegatecall. Function/quotes: TransparentUpgradeableProxy.constructor: \"... ERC1967Proxy(_logic, _data) { _changeAdmin(admin_); }\"; ERC1967Upgrade: \"bytes32 internal constant _ADMIN_SLOT = 0xb5312768...;\" and \"function _getAdmin() internal view returns (address) { return StorageSlot.getAddressSlot(_ADMIN_SLOT).value; }\"",
+        "severity": "Medium",
+        "red_team_argument": "If an initializer gates setup with require(msg.sender == admin()) or assigns roles from _getAdmin(), it will observe address(0). This can brick initialization or misconfigure critical roles, leaving the system deployed in an unusable or unsafe state.",
+        "blue_team_argument": "Do not read admin() inside initializers on Transparent proxies. Pass the intended admin/owner as an explicit initializer parameter, or initialize after deployment via the admin. This is a known OZ ordering behavior.",
+        "final_conclusion": "Reading the admin slot in an initializer during Transparent deployment is unsafe and leads to zero-address reads or misconfiguration.",
+        "attack_scenario": "Impl.initialize checks require(msg.sender == admin()) to proceed. Deployer triggers initialize via constructor _data; admin isn’t set yet so admin() == address(0), causing an immediate revert and bricking deployment, or leading to zero-address role assignment if not checked.",
+        "economic_impact": "Bricked initialization or incorrect role assignments can lock functionality or weaken access control; impact ranges from deployment failure to latent misconfigurations.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Proxy",
+          "ERC1967Upgrade"
+        ],
+        "chained_findings": [
+          "Initializer uses msg.sender under Transparent constructor ordering"
+        ]
+      }
+    },
+    {
+      "source": "curated",
+      "details": {
+        "description": "Initializer reads admin/_ADMIN_SLOT before it is set during Transparent constructor ordering.",
+        "severity": "Medium",
+        "line_numbers": [
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69
+        ],
+        "red_team_argument": "The constructor calls ERC1967Proxy(_logic, _data) first (delegatecalling the initializer) and only then sets the admin via _changeAdmin(admin_). Any initializer logic that reads or relies on the EIP-1967 admin slot during this call will observe address(0), potentially failing checks or initializing with incorrect assumptions.",
+        "blue_team_argument": "Avoid reading proxy admin in the initializer executed via _data. If admin context is required, deploy with empty _data, set admin, and then have a non-admin EOA call the initializer; or design initializers to accept explicit parameters (e.g., initial admin/roles) instead of reading from proxy admin storage.",
+        "final_conclusion": "Call-order footgun exists: admin slot is unset during the _data initializer delegatecall. Design initializers to not depend on proxy admin being set or initialize after deployment via a non-admin caller.",
+        "attack_scenario": "Initializer contains a sanity check like require(IERC1967(address(this)).getAdmin() != address(0)). The check fails during deployment initialization because the admin slot is not yet set, reverting deployment or causing incorrect defaults.",
+        "economic_impact": "Deployment failure or mis-initialization of critical role/permission state, leading to service disruption or later governance issues.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Proxy",
+          "Implementation (upgradeable)"
+        ],
+        "chained_findings": [
+          "A"
+        ]
+      }
+    },
+    {
+      "source": "curated",
+      "details": {
+        "description": "ProxyAdmin getters can return spoofed data if ProxyAdmin is not the current admin of the target proxy.",
+        "severity": "Medium",
         "line_numbers": [
           18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
           30,
-          31
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41
         ],
-        "red_team_argument": "- Line 30 marks the constructor payable, and line 31 initializes via _upgradeBeaconToAndCall. The standard OZ routine uses functionDelegateCall (no value). Any ETH sent on deployment remains on the proxy balance, not in the implementation\u2019s logic. If the implementation lacks a drain function, funds are stuck.\n- Additionally, since BeaconProxy inherits Proxy (line 18), it has receive/fallback. If later implementations don\u2019t support receiving ETH or no withdraw method exists, forced ETH (via selfdestruct) can accumulate and be unclaimable, affecting accounting or creating griefing vectors.",
-        "blue_team_argument": "- This is a common, documented property of proxies. Best practice is to avoid sending ETH during proxy deployment unless the implementation includes a reclaim path, and to implement explicit withdraw/recovery methods on the logic contract.\n- The proxy will revert on direct ETH sends if the implementation lacks payable receive/fallback, preventing accidental deposits in most user flows (forced ETH remains theoretically possible).",
-        "final_conclusion": "Not a critical vuln but a known footgun. If deployers send ETH to the proxy at construction or later via forced transfers, it may become irrecoverable absent an explicit withdrawal function in the implementation.",
-        "attack_scenario": "1) Deployer sends msg.value > 0 when deploying BeaconProxy. 2) Initialization executes without forwarding value, leaving ETH at the proxy. 3) The implementation has no withdraw function. 4) ETH is permanently stuck at the proxy address.",
-        "economic_impact": "Funds stuck at the proxy address. Magnitude depends on accidental deployment value or subsequent forced transfers; typically low but can be material if a misconfigured deployment sends significant ETH.",
+        "red_team_argument": "getProxyAdmin and getProxyImplementation use staticcall to the proxy’s admin() and implementation() selectors. If ProxyAdmin is not the admin, TransparentUpgradeableProxy forwards the call to the implementation, which may expose functions with the same selectors and return attacker-controlled values. Tooling relying on these getters may be misled and make unsafe operational decisions.",
+        "blue_team_argument": "Treat these getters as unsafe unless this ProxyAdmin is known to be the proxy admin. Prefer reading EIP-1967 slots directly via eth_getStorageAt or add on-chain asserts in hardened admin wrappers. In normal setups, ProxyAdmin is indeed the proxy admin, so spoofing does not occur.",
+        "final_conclusion": "A cross-contract interaction hazard that can cause misconfiguration and unsafe ops when combined with forwarded calls. Use direct storage reads or verified-admin assertions.",
+        "attack_scenario": "Operator uses getProxyAdmin/getProxyImplementation for monitoring. For a proxy not administered by this ProxyAdmin, the staticcall is forwarded to the implementation which returns crafted values. Operator wrongly concludes control is intact and proceeds with an upgrade, triggering unintended implementation logic.",
+        "economic_impact": "Operational errors and potential state corruption; may enable follow-on unauthorized upgrades when combined with UUPS exposure.",
         "contracts_involved": [
-          "BeaconProxy",
-          "Proxy",
-          "ERC1967Upgrade"
+          "ProxyAdmin",
+          "TransparentUpgradeableProxy",
+          "ImplementationContract (user-defined)"
         ],
         "chained_findings": [
-          "C"
-        ]
-      }
-    },
-    {
-      "source": "analyze_proxy_storage",
-      "details": {
-        "description": "[6] Admin self-assignment can brick upgrades: _changeAdmin allows setting admin to the proxy itself, making admin-only functions unreachable. Functions and quotes: - ERC1967Upgrade._setAdmin: \"require(newAdmin != address(0), 'ERC1967: new admin is the zero address');\" (no check against address(this)) - ERC1967Upgrade._changeAdmin: \"emit AdminChanged(_getAdmin(), newAdmin); _setAdmin(newAdmin);\"",
-        "severity": "High",
-        "line_numbers": [
-          114,
-          115,
-          116,
-          124,
-          125,
-          126,
-          127
-        ],
-        "red_team_argument": "If an operator (or a misconfigured admin script) calls changeAdmin(address(this)) on a TransparentUpgradeableProxy, the proxy's admin becomes the proxy address. Since msg.sender can never be the proxy address for external calls, all admin-only functions (upgrade, changeAdmin, etc.) become permanently inaccessible, irreversibly locking upgrades and admin reads.",
-        "blue_team_argument": "This requires an explicit misconfiguration by the admin. Day-to-day operation of the proxied logic remains functional for users; only upgrade/admin paths are bricked. Teams can avoid this via deployment tooling and checks. Some ecosystems also use ProxyAdmin helper contracts to centralize admin actions and enforce safe parameters.",
-        "final_conclusion": "Lack of a guard against setting admin to address(this) is a known footgun that can permanently brick upgrade/admin capabilities. Add a require(newAdmin != address(this)) guard at the call site that invokes _changeAdmin (e.g., in TransparentUpgradeableProxy's changeAdmin).",
-        "attack_scenario": "An operator invokes TransparentUpgradeableProxy.changeAdmin(proxyAddress) by mistake. The transaction succeeds. Subsequent calls to upgradeTo/upgradeToAndCall/changeAdmin are forever blocked because msg.sender must equal the admin, which is now the proxy address itself.",
-        "economic_impact": "Permanent loss of upgradeability and admin control. Security patches, parameter updates, or emergency responses become impossible. Potentially large governance and maintenance costs, including full system redeploys and user migration.",
-        "contracts_involved": [
-          "ERC1967Upgrade",
-          "TransparentUpgradeableProxy"
-        ],
-        "chained_findings": []
-      }
-    },
-    {
-      "source": "analyze_proxy_storage",
-      "details": {
-        "description": "[3] Beacon runtime can DoS if beacon.implementation() returns a non-contract at runtime. Functions and quotes: - BeaconProxy._implementation: \"return IBeacon(_getBeacon()).implementation();\" (no runtime isContract check) - ERC1967Upgrade._setBeacon: \"require(Address.isContract(IBeacon(newBeacon).implementation()), '... not a contract');\" (checked only when setting the beacon address)",
-        "severity": "Medium",
-        "line_numbers": [],
-        "red_team_argument": "If a custom or misconfigured beacon later returns an EOA or an address whose code was removed, the proxy will delegatecall to an address with no code. Calls may revert (e.g., when decoding empty returndata) or become inert no-ops, effectively DoSing functionality for users.",
-        "blue_team_argument": "Using OpenZeppelin\u2019s UpgradeableBeacon enforces Address.isContract(newImplementation) on every beacon upgrade, preventing this at the source. ERC1967Upgrade also verifies the beacon\u2019s current implementation is a contract when the beacon is set. The risk mainly applies if a non-standard beacon is used or if its upgrade logic is flawed.",
-        "final_conclusion": "BeaconProxy relies on the beacon\u2019s correctness at runtime. If the beacon can return a non-contract, user calls can fail or misbehave. Use a rigorously vetted beacon (e.g., OZ UpgradeableBeacon) that requires isContract() on every upgrade, and consider adding runtime checks or monitors.",
-        "attack_scenario": "A project replaces the standard UpgradeableBeacon with a custom beacon that omits isContract checks. An operator upgrades the beacon to an EOA address by mistake. From that point on, proxies delegating through the beacon fail to execute logic, breaking reads/writes across the app.",
-        "economic_impact": "Loss of availability and functionality for all proxied calls via the affected beacon. Potential revenue loss, inability to operate contracts, and emergency redeploy/migration costs.",
-        "contracts_involved": [
-          "BeaconProxy",
-          "ERC1967Upgrade"
-        ],
-        "chained_findings": []
-      }
-    },
-    {
-      "source": "analyze_upgrade_admin",
-      "details": {
-        "description": "ProxyAdmin mutators (changeProxyAdmin, upgrade, upgradeAndCall) do not assert that ProxyAdmin is the current admin of the target TransparentUpgradeableProxy before attempting the mutation. They rely on the proxy\u2019s internal admin gate in _fallback to accept or reject the call. If ProxyAdmin is not admin, the call is transparently forwarded via delegatecall to the implementation, which can be dangerous if the implementation exposes functions with overlapping selectors (e.g., UUPS-style upgradeTo/upgradeToAndCall).",
-        "severity": "High",
-        "line_numbers": [
-          88,
-          89,
-          92,
-          95,
-          96,
-          103,
-          105,
-          106
-        ],
-        "red_team_argument": "- If a team accidentally pairs a Transparent proxy with an implementation that exposes UUPS upgrade functions, then any non-admin call to upgradeTo/upgradeToAndCall is forwarded to the implementation by delegatecall. If the implementation\u2019s authorizeUpgrade grants the caller (msg.sender) permission (e.g., it\u2019s owned by the same EOA that owns ProxyAdmin), the proxy can be upgraded through the implementation path even though ProxyAdmin is not the proxy admin. This bypasses the intended admin-only upgrade surface and any off-chain governance controls around ProxyAdmin.\n- Even without UUPS functions, selector collisions can cause unintended execution on the implementation when ProxyAdmin is not the real admin, making operational behavior non-deterministic and error-prone.",
-        "blue_team_argument": "- Keep patterns separated: never deploy UUPS-enabled logic (upgradeTo/upgradeToAndCall) behind a Transparent proxy. Use UUPSProxy for UUPS logic, or ensure the implementation does not expose colliding selectors.\n- Operational preflight: before any mutation, check getProxyAdmin(proxy) == address(this) and revert early if not. Although ProxyAdmin doesn\u2019t do this itself, scripts can enforce it. OZ ProxyAdmin.getProxyAdmin() performs a staticcall to proxy.admin(); since msg.sender is ProxyAdmin, it will succeed only if ProxyAdmin is current admin.\n- Monitoring: alert on AdminChanged events and verify the expected admin on-chain before upgrades.\n- Governance: make ProxyAdmin owner a timelock/multisig and keep the implementation\u2019s on-chain role owners distinct from ProxyAdmin (see role-split finding).",
-        "final_conclusion": "By design, ProxyAdmin does not assert it is the current admin; correctness depends on the Transparent proxy\u2019s admin gate. This is safe if you avoid selector collisions and do preflight checks, but mixing patterns (Transparent + UUPS) can create a second upgrade path and should be treated as a high-severity misconfiguration risk.",
-        "attack_scenario": "1) Team upgrades to an implementation that includes UUPS upgradeTo/upgradeToAndCall with onlyOwner authorization. Owner is set to the team\u2019s EOA, while the Transparent proxy admin is a distinct ProxyAdmin contract. 2) Later, the admin of the Transparent proxy is accidentally changed to a different address. 3) The team\u2019s ProxyAdmin.upgrade(proxy, newImpl) call is not processed as an admin call; it is forwarded by delegatecall to the implementation\u2019s upgradeTo. 4) Since msg.sender is ProxyAdmin and the implementation\u2019s owner is the team\u2019s EOA or allows ProxyAdmin, authorizeUpgrade passes and the proxy\u2019s implementation slot is updated through delegatecall, bypassing the intended Transparent admin upgrade path.",
-        "economic_impact": "- Governance bypass or split-brain upgrade surface if patterns are mixed; upgrades might occur outside expected admin controls. - At best, operational DoS/confusion when upgrades silently fail or execute unintended logic; at worst, unauthorized upgrades if implementation auth is misconfigured.",
-        "contracts_involved": [
-          "ProxyAdmin.sol",
-          "TransparentUpgradeableProxy.sol#_fallback",
-          "ERC1967Upgrade.sol#_upgradeToAndCall",
-          "Address.sol#functionDelegateCall"
-        ],
-        "chained_findings": [
-          "Selector collisions between Transparent proxy admin selectors and implementation functions",
-          "Mixing Transparent pattern with UUPS-enabled implementation"
-        ]
-      }
-    },
-    {
-      "source": "analyze_upgrade_admin",
-      "details": {
-        "description": "Admin cannot fallback to implementation in Transparent proxies. If the same address is used for both proxy admin and application owner/pauser, owner-only functions on the implementation become unreachable to that address due to the admin gate (reverts with \"admin cannot fallback to proxy target\"). This creates an operational DoS on pausing, upgrades via app-level hooks, or any owner-only actions on the implementation.",
-        "severity": "Medium",
-        "line_numbers": [
-          77,
-          78,
-          81,
-          88,
-          89,
-          103
-        ],
-        "red_team_argument": "- If the project sets the implementation\u2019s owner/pauser to the ProxyAdmin address (or to the same EOA used as proxy admin), any attempt to call owner-only functions through the proxy will revert with \"admin cannot fallback to proxy target\" because admin calls never delegate to the implementation. This can permanently block pausing/unpausing or other emergency controls.",
-        "blue_team_argument": "- Enforce role split: keep proxy admin (ProxyAdmin contract) distinct from the application\u2019s runtime owner/pauser (EOA, multisig, or timelock) that calls the proxied functions.\n- During initialization, pass explicit owner/role addresses as parameters to the initializer rather than relying on msg.sender. Document and enforce that none of the runtime operators are the proxy admin.\n- Add a deployment-time/script check: require(proxy._getAdmin() == address(ProxyAdmin)) and require(appOwner != proxyAdmin).",
-        "final_conclusion": "The behavior is by design in the Transparent pattern. Ensure the proxy admin address differs from runtime privileged addresses; otherwise, owner-only functionality becomes inaccessible and can create operational risk during incidents.",
-        "attack_scenario": "Emergency occurs and the team\u2019s owner/pauser address equals the proxy admin. Attempts to call pause() via the proxy revert with \"TransparentUpgradeableProxy: admin cannot fallback to proxy target\". The system cannot be paused until an upgrade changes roles, increasing risk exposure during the incident window.",
-        "economic_impact": "- Operational DoS on emergency controls (pause/unpause, parameter changes).\n- Potentially prolonged exposure to exploits if pausing is blocked.",
-        "contracts_involved": [
-          "TransparentUpgradeableProxy.sol#_fallback",
-          "TransparentUpgradeableProxy.sol#ifAdmin"
-        ],
-        "chained_findings": [
-          "Misconfiguration of owner/pauser equals proxy admin"
-        ]
-      }
-    },
-    {
-      "source": "analyze_upgrade_admin",
-      "details": {
-        "description": "upgradeToAndCall executes arbitrary initializer on the new implementation via delegatecall as the admin. This is powerful and intended, but it is a footgun: the initializer executes with msg.sender = the admin (ProxyAdmin), and it can run arbitrary code, including external calls, role assignments, and even selfdestruct in the proxy\u2019s context. Safe procedures are required.",
-        "severity": "High",
-        "line_numbers": [
-          172,
-          173,
-          174,
-          175,
-          176,
-          88,
-          89
-        ],
-        "red_team_argument": "- If the initializer assigns ownership based on msg.sender, it will set the owner to ProxyAdmin, making runtime owner-only functions unreachable (admin cannot fallback). Worse, if the initializer renounces roles, wipes storage, or calls selfdestruct, the proxy itself is affected because delegatecall runs in proxy context.\n- If the initializer makes external calls, an attacker controlling the callee can reenter into the proxy during the upgrade window unless the initializer is written defensively.",
-        "blue_team_argument": "- Preferred safe two-step when msg.sender sensitivity matters:\n  1) Pause the app with a non-admin privileged account, if available.\n  2) ProxyAdmin.upgrade(proxy, newImpl) (no call; note _dispatchUpgradeTo enforces zero value).\n  3) From the intended runtime owner (not the proxy admin), call initialize/upgrade hook on the proxy to finish setup.\n  4) Unpause.\n- If atomic upgrade-and-initialize is required, design the initializer to take explicit role/owner parameters and never derive critical roles from msg.sender; avoid external calls or guard them tightly; use initializer modifiers to prevent re-entry initialization.\n- Review initializer code for dangerous ops (selfdestruct, delegatecalls to untrusted targets). Consider pausing before upgrading.",
-        "final_conclusion": "upgradeToAndCall is safe when used intentionally but dangerous if initializers depend on msg.sender or perform risky logic. Use a two-step process or parameterized initializers and pause during upgrades to minimize risk.",
-        "attack_scenario": "A new implementation\u2019s initialize() sets owner = msg.sender. The team uses ProxyAdmin.upgradeToAndCall with data = abi.encodeWithSignature(\"initialize()\"), making the ProxyAdmin the owner. Later, owner-only functions become unreachable due to the Transparent admin gate, blocking emergency responses. Alternatively, a poorly-audited initializer performs an external call that reenters and corrupts state during the upgrade.",
-        "economic_impact": "- Loss of control over owner-only functionality, requiring a follow-up upgrade to recover.\n- Potential bricking or severe state corruption if initializer contains destructive logic or unsafe external calls.",
-        "contracts_involved": [
-          "TransparentUpgradeableProxy.sol#_dispatchUpgradeToAndCall",
-          "ERC1967Upgrade.sol#_upgradeToAndCall",
-          "Address.sol#functionDelegateCall",
-          "TransparentUpgradeableProxy.sol#_fallback"
-        ],
-        "chained_findings": [
-          "Role split misconfiguration amplifies initializer msg.sender pitfall"
-        ]
-      }
-    },
-    {
-      "source": "analyze_upgrade_admin",
-      "details": {
-        "description": "ETH value during upgradeToAndCall: the proxy accepts Ether on upgradeToAndCall and delegates to the new implementation\u2019s initializer. Because delegatecall preserves msg.value, the initializer sees msg.value and can use it. If the initializer doesn\u2019t consume the Ether, it remains on the proxy balance. Other admin entrypoints enforce zero value. Funds aren\u2019t lost by design, but can be unintentionally left on the proxy if not handled by the implementation.",
-        "severity": "Medium",
-        "line_numbers": [
-          172,
-          173,
-          174,
-          175,
-          176,
-          158,
-          159,
-          161,
-          162,
-          190,
-          191,
-          192
-        ],
-        "red_team_argument": "- An operator can accidentally send ETH during upgradeToAndCall with an initializer that ignores msg.value, leaving ETH stuck if the implementation provides no way to withdraw. If governance is compromised, a malicious initializer could route ETH to hostile sinks.\n- For Beacon pattern users expecting an atomic upgrade+funding, this behavior doesn\u2019t exist on the beacon (no upgradeAndCall), leading to inconsistent operational assumptions across patterns.",
-        "blue_team_argument": "- Only send value on upgradeToAndCall when the initializer explicitly uses it; otherwise, keep msg.value = 0.\n- Ensure the implementation exposes a deliberate way to recover ETH left on the proxy (e.g., sweep function, payable receive with withdrawal path), or be prepared to add it in a future upgrade.\n- Note: upgradeTo (no call) and other admin dispatchers enforce msg.value == 0 via _requireZeroValue, preventing accidental ETH sends on those paths.",
-        "final_conclusion": "ETH sent to upgradeToAndCall is visible to the initializer and accrues to the proxy. It is not auto-forwarded or lost. Treat value-carrying upgrades as intentional; otherwise keep value at zero and ensure there\u2019s a recovery path for accidental ETH deposits.",
-        "attack_scenario": "During an upgrade, an operator sends 50 ETH along with upgradeToAndCall out of habit. The initializer ignores msg.value. The 50 ETH remains on the proxy. The implementation lacks a withdrawal function, making the ETH inaccessible until a subsequent upgrade adds a withdrawal path.",
-        "economic_impact": "- Temporary or prolonged lock of ETH on the proxy address; operational overhead to recover via another upgrade; potential confusion in accounting/TVL monitoring.",
-        "contracts_involved": [
-          "TransparentUpgradeableProxy.sol#_dispatchUpgradeToAndCall",
-          "TransparentUpgradeableProxy.sol#_dispatchUpgradeTo",
-          "TransparentUpgradeableProxy.sol#_requireZeroValue",
-          "ERC1967Upgrade.sol#_upgradeToAndCall",
-          "Address.sol#functionDelegateCall"
-        ],
-        "chained_findings": [
-          "Initializer design choices around msg.value handling"
+          "Forwarded staticcalls when not admin can hit implementation",
+          "Selector collisions on admin()/implementation() enable spoofed responses"
         ]
       }
     },
     {
       "source": "interactions",
       "details": {
-        "description": "Transparent proxy forwards any non-admin call (including calls using admin-function selectors like upgradeTo/upgradeToAndCall/changeAdmin) to the implementation. If the implementation also exposes functions with these selectors (e.g., a UUPS-style upgradeTo) and its authorization is missing or misconfigured, a non-admin external caller can trigger an upgrade through the proxy by hitting the implementation\u2019s similarly named function. This cross-contract interaction between TransparentUpgradeableProxy and the implementation can lead to unauthorized upgrades or admin takeovers.",
-        "severity": "High",
-        "line_numbers": [
-          84,
-          86,
-          87,
-          88,
-          90,
-          92,
-          94,
-          96,
-          98,
-          101,
-          102,
-          133,
-          134,
-          139,
-          145,
-          146,
-          153
-        ],
-        "red_team_argument": "As an attacker, I call proxy.upgradeTo(maliciousImpl) via the TransparentUpgradeableProxy. Because I\u2019m not the proxy admin, the proxy routes my call to the implementation. If the implementation contains a function with the same selector (upgradeTo(address)) and its access control is weak (e.g., missing onlyProxy/authorizeUpgrade or mistakenly open under certain conditions), my call succeeds and updates the proxy\u2019s implementation to my malicious contract. I can then drain funds or brick the system.",
-        "blue_team_argument": "The transparent proxy pattern is designed to forward non-admin calls to the implementation. Secure implementations must not expose upgrade/admin-like functions without strict authorization. Using OpenZeppelin\u2019s UUPSUpgradeable with proper authorizeUpgrade only allows authorized upgraders to execute upgrades. Also, avoid exposing admin(), implementation(), changeAdmin(), upgradeTo(), upgradeToAndCall() in the implementation, or ensure they are strongly restricted and do not conflict with the proxy\u2019s upgrade authority.",
-        "final_conclusion": "The proxy\u2019s forwarding of non-admin calls to the implementation, combined with an implementation that exposes similarly named upgrade/admin selectors with weak authorization, enables unauthorized upgrades. This is a cross-contract risk intrinsic to transparent proxies when paired with insecure implementations. Mitigate by ensuring implementations never expose conflicting admin/upgrade selectors without strict authorization (e.g., UUPS with robust authorizeUpgrade), and by validating upgrade paths in audits.",
-        "attack_scenario": "1) Project uses TransparentUpgradeableProxy with an implementation that includes a UUPS-like upgradeTo(address) function. 2) The implementation\u2019s upgrade authorization is misconfigured or overly permissive. 3) An attacker calls proxy.upgradeTo(maliciousImpl). As a non-admin, the proxy forwards the call to the implementation. 4) The implementation\u2019s upgradeTo executes and updates the proxy to maliciousImpl. 5) Attacker gains control of logic, steals assets, or locks upgrades.",
-        "economic_impact": "Potential full loss of control over the proxy: attacker can set a malicious implementation to seize assets, mint/burn tokens arbitrarily, change critical parameters, block further upgrades, or permanently brick the system. Impact ranges up to total value at risk behind the proxy.",
-        "contracts_involved": [
-          "TransparentUpgradeableProxy",
-          "Implementation (behind the proxy, e.g., UUPS or custom)",
-          "ProxyAdmin (operationally relevant, but not required for the exploit)"
-        ],
-        "chained_findings": [
-          "Proxy forwards non-admin calls to implementation, including admin-function selectors.",
-          "Implementation exposes upgrade/admin-like functions with weak/misconfigured authorization."
-        ]
-      }
-    },
-    {
-      "source": "synthesis",
-      "details": {
-        "description": "Initializer msg.sender drift + Transparent admin gate + admin self-assignment combine to permanently brick upgrades and owner-only controls, stranding funds sent during upgradeToAndCall.",
-        "severity": "Critical",
-        "line_numbers": [
-          63,
-          69,
-          88,
-          95,
-          103,
-          146,
-          151,
-          172,
-          174,
-          190,
-          192
-        ],
-        "red_team_argument": "During ProxyAdmin.upgradeToAndCall, delegatecall preserves msg.sender as the admin. If initialize() sets owner = msg.sender, the owner becomes ProxyAdmin. Transparent proxies forbid the admin from falling back to the implementation, so owner-only functions become unreachable. A later operator mistake calling changeAdmin(address(proxy)) sets admin to the proxy itself; since no external caller can satisfy msg.sender == proxy, all admin actions are permanently blocked. Any ETH accidentally sent with upgradeToAndCall and ignored by the initializer remains stuck on the proxy with no viable withdrawal path if onlyOwner and the owner is the admin (who cannot call through the proxy).",
-        "blue_team_argument": "Always pass explicit owner/governance parameters to initializers; never derive roles from msg.sender in upgrade flows. Enforce role-splitting: proxy admin must differ from runtime owner/pauser. Add off-chain and on-chain guards to forbid changeAdmin(address(this)) and preflight-check role separation before upgrades. Avoid sending value with upgradeToAndCall unless the initializer intentionally consumes it and provide a non-admin withdrawal path callable by runtime governance.",
-        "final_conclusion": "This chain of operational pitfalls results in an unrecoverable state: upgrades frozen and owner-only functions unreachable, with potential funds permanently stuck at the proxy.",
-        "attack_scenario": "1) Admin upgrades with data=initialize() that sets owner=msg.sender. 2) Owner becomes ProxyAdmin; admin cannot call owner-only functions due to the transparent admin gate. 3) Later, an operator mistakenly executes changeAdmin(proxy, address(proxy)). 4) Admin-only paths are bricked forever; owner-only functions remain unreachable; any ETH on the proxy cannot be withdrawn.",
-        "economic_impact": "Permanent loss of upgradeability and governance control; inability to pause/respond; funds stuck on the proxy. Likely requires full redeploy/migration with significant operational and reputational cost.",
-        "contracts_involved": [
-          "TransparentUpgradeableProxy",
-          "ERC1967Upgrade",
-          "ERC1967Proxy",
-          "ProxyAdmin"
-        ],
-        "chained_findings": [
-          "Initializer uses msg.sender (deep_adversarial)",
-          "Admin cannot fallback to implementation by design (role-split footgun)",
-          "Admin self-assignment to proxy is allowed (analyze_proxy_storage)",
-          "upgradeToAndCall accepts ETH; value can be stranded (deep_adversarial)"
-        ]
-      }
-    },
-    {
-      "source": "synthesis",
-      "details": {
-        "description": "Beacon meltdown: BeaconProxy trusts beacon.implementation() at runtime; a compromised or non-compliant beacon can return a non-contract or malicious implementation, causing system-wide DoS or arbitrary logic execution across all BeaconProxy instances.",
-        "severity": "Critical",
+        "description": "ProxyAdmin getters can return spoofed data if ProxyAdmin is not the current admin of the target proxy. getProxyAdmin and getProxyImplementation use staticcall to the proxy’s admin() and implementation() selectors. If ProxyAdmin is not the admin, TransparentUpgradeableProxy forwards the call to the implementation, which may expose functions with the same selectors and return attacker-controlled values. Off-chain or on-chain tooling relying on these getters may be misled about proxy admin/implementation state and make unsafe operational decisions.",
+        "severity": "Medium",
         "line_numbers": [
           18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
           30,
           31,
-          44,
-          45,
-          46
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41
         ],
-        "red_team_argument": "BeaconProxy._implementation returns IBeacon(_getBeacon()).implementation() without runtime code checks. If the beacon owner is compromised or a custom beacon omits isContract checks, the beacon can point to an EOA/zero address (DoS as delegatecall to no code) or to attacker-controlled logic that executes across all BeaconProxies. With malicious logic, the attacker can drain assets, corrupt state, or brick the system globally by reverting or self-destructing flows.",
-        "blue_team_argument": "Use OpenZeppelin UpgradeableBeacon, which enforces Address.isContract on every upgrade, and secure its ownership via a timelock/multisig with strict procedures. Add monitoring to verify beacon and implementation code hashes and alert on anomalies. Consider emergency pause switches in logic and rehearsed incident procedures to rapidly rotate the beacon to a safe implementation.",
-        "final_conclusion": "Trust in the beacon is a single point of failure. A compromised or non-compliant beacon can instantly disable or subvert all BeaconProxy instances that reference it, constituting a critical availability and integrity risk.",
-        "attack_scenario": "1) Attacker compromises the beacon owner key. 2) They set the beacon implementation to an EOA or malicious contract. 3) All BeaconProxy calls delegate to empty or hostile code, producing widespread reverts or arbitrary attacker logic. 4) Protocol availability is lost or assets are siphoned until the beacon is restored (if possible).",
-        "economic_impact": "End-to-end outage or mass exploitation across all beaconed deployments. Potential full TVL loss or sustained downtime, emergency response costs, and reputational damage.",
+        "red_team_argument": "If the implementation defines admin() or implementation() (or returns computed values in fallback), getProxyAdmin/getProxyImplementation can succeed and return attacker-chosen addresses. An operator relying on these getters for checks might erroneously believe ProxyAdmin is in control or that a particular implementation is active, then proceed with actions that either fail or, worse, invoke unintended state changes on the implementation via forwarded calls.",
+        "blue_team_argument": "The functions document the requirement that this contract must be the admin of the proxy. Operators should either ensure this precondition holds, or read the EIP-1967 admin/implementation slots directly with eth_getStorageAt to avoid spoofing. In normal setups, ProxyAdmin is indeed the proxy admin, so spoofing does not occur.",
+        "final_conclusion": "While not an exploitable bug in isolation, it is a cross-contract interaction hazard that can cause misconfiguration and unsafe ops. Treat ProxyAdmin getters as unsafe unless ProxyAdmin is known to be the proxy admin; otherwise read EIP-1967 slots directly.",
+        "attack_scenario": "- ProxyAdmin owner monitors proxies using getProxyAdmin and getProxyImplementation.\n- For a proxy not administered by this ProxyAdmin, the staticcall is forwarded to implementation which returns crafted values.\n- The operator wrongly concludes they control the proxy, and invokes ProxyAdmin.upgrade, unintentionally calling the implementation’s upgradeTo via fallback. Depending on implementation logic, this may mutate proxy storage or trigger unexpected behavior.",
+        "economic_impact": "Operational errors, potential state corruption if forwarded calls hit similarly named functions in implementation; misdirected admin operations can cause outages or require emergency recovery.",
         "contracts_involved": [
-          "BeaconProxy",
-          "UpgradeableBeacon",
-          "ERC1967Upgrade",
-          "IBeacon",
-          "Proxy"
+          "ProxyAdmin",
+          "TransparentUpgradeableProxy",
+          "ImplementationContract (user-defined)"
         ],
         "chained_findings": [
-          "BeaconProxy trusts beacon.implementation() without runtime code check (deep_adversarial C)",
-          "Custom/compromised beacon can set non-contract or malicious implementation",
-          "Constructor/initialization does not guarantee ongoing runtime safety; trust must be maintained"
+          "Forwarded staticcalls when not admin can hit implementation",
+          "Selector collisions on admin()/implementation() enable spoofed responses"
         ]
       }
     },
     {
-      "source": "applicability",
+      "source": "curated",
       "details": {
-        "description": "CVE-2023-30541 (Transparent proxy selector-clash) - Not Applicable here; TransparentUpgradeableProxy is v4.8.3+.",
-        "severity": "Low",
+        "description": "Stuck ETH sink around upgradeToAndCall: value sent to upgradeToAndCall can remain on the proxy balance and be unrecoverable without a sweep path.",
+        "severity": "Medium",
+        "line_numbers": [
+          103,
+          172,
+          173,
+          174,
+          175,
+          176,
+          177,
+          190,
+          191,
+          192
+        ],
+        "red_team_argument": "_dispatchUpgradeToAndCall is payable and does not enforce msg.value == 0, so the admin can send ETH during upgrades. If the delegated initializer doesn’t forward or refund that ETH, it remains on the proxy’s balance. The admin cannot directly call implementation functions due to transparency, so without a sweep path callable by a non-admin or a subsequent planned upgrade, funds can become practically stuck.",
+        "blue_team_argument": "Operationally enforce msg.value == 0 for upgrades (e.g., ProxyAdmin wrappers/scripts enforce zero-value). If value must be sent, ensure the initializer immediately forwards it or accounts for it explicitly. Provide a public or role-gated sweep mechanism in implementation that non-admin can trigger to avoid stranded ETH.",
+        "final_conclusion": "ETH can be inadvertently stranded on the proxy if sent via upgradeToAndCall and not handled by the initializer. This is a known footgun of the Transparent pattern’s admin path.",
+        "attack_scenario": "An ops engineer mistakenly includes 10 ETH in an upgradeToAndCall. The initializer ignores msg.value. ETH remains at the proxy. Admin cannot call withdraw on the implementation due to transparency. Without a prebuilt sweeping function callable by a non-admin, the ETH remains stuck.",
+        "economic_impact": "Stranded funds (ETH) at the proxy. Remediation may require additional upgrades and custom sweep logic; meantime funds are illiquid.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade (delegatecall path)"
+        ],
+        "chained_findings": [
+          "H"
+        ]
+      }
+    },
+    {
+      "source": "analyze_proxy_storage",
+      "details": {
+        "description": "Transparent proxy init runs via delegatecall in the ERC1967Proxy constructor, so msg.sender inside the initializer is the proxy deployer (not admin_). Transparent then sets admin after that call. Function/quotes: ERC1967Proxy.constructor: \"constructor(address _logic, bytes memory _data) payable { _upgradeToAndCall(_logic, _data, false); }\"; ERC1967Upgrade._upgradeToAndCall: \"Address.functionDelegateCall(newImplementation, data);\"; TransparentUpgradeableProxy.constructor: \"... ERC1967Proxy(_logic, _data) { ... _changeAdmin(admin_); }\"",
+        "severity": "Medium",
+        "red_team_argument": "If a factory or deployer passes _data that initializes owner via owner = msg.sender, they become the owner, not the intended admin or ProxyAdmin. A malicious or compromised deployer can silently retain privileged control over the implementation’s access controls.",
+        "blue_team_argument": "This is expected Transparent ordering. Avoid using msg.sender in initializers; instead pass the intended owner/admin explicitly as an argument and set it from the parameter. Alternatively deploy without _data and invoke initialize via the admin after deployment.",
+        "final_conclusion": "Initializer logic that relies on msg.sender is unsafe under Transparent constructor ordering and can misassign ownership/roles.",
+        "attack_scenario": "Deployer creates TransparentUpgradeableProxy with _data = abi.encodeCall(Impl.initialize,()). Impl.initialize sets owner = msg.sender. The deployer ends up as owner, while admin_ is set later. Privilege split or owner hijack occurs.",
+        "economic_impact": "Misassigned owner/roles can enable unauthorized configuration changes or permanently require coordination from the unintended owner; downstream value depends on what the owner controls (potentially high).",
+        "contracts_involved": [
+          "ERC1967Proxy",
+          "ERC1967Upgrade",
+          "TransparentUpgradeableProxy"
+        ],
+        "chained_findings": [
+          "Initializer reads admin()/_ADMIN_SLOT during deployment"
+        ]
+      }
+    },
+    {
+      "source": "curated",
+      "details": {
+        "description": "Transparent subclass externals/publics can shadow admin ops (selector clashes).",
+        "severity": "Medium",
+        "line_numbers": [
+          53,
+          54,
+          55,
+          56
+        ],
+        "red_team_argument": "Adding external/public functions in a subclass can create selector clashes with ITransparentUpgradeableProxy’s admin ops. If a subclass implements, for example, function upgradeTo(address), the EVM will dispatch directly to that function instead of the internal fallback admin dispatcher, potentially making admin operations inaccessible or altering their semantics.",
+        "blue_team_argument": "Do not extend TransparentUpgradeableProxy with additional external/public functions. If extension is unavoidable, systematically check for selector collisions with ITransparentUpgradeableProxy’s functions and ensure no shadowing. Prefer composition over inheritance; treat this proxy as final.",
+        "final_conclusion": "The risk is inherent in the design and explicitly documented. Avoid subclassing with new externals/publics to prevent shadowing admin operations and breaking upgradeability.",
+        "attack_scenario": "A team extends TransparentUpgradeableProxy and adds an external function changeAdmin(address) for custom logic. The selector collides and the admin dispatcher is never reached; upgrades and admin changes become inaccessible.",
+        "economic_impact": "Loss of upgrade/admin capabilities due to selector shadowing; potential permanent governance lockout.",
         "contracts_involved": [
           "TransparentUpgradeableProxy"
         ],
-        "red_team_argument": "Historic clash made some impl selectors unreachable.",
-        "blue_team_argument": "Patched in OZ 4.8.3+; repository ships the patched version.",
-        "final_conclusion": "Documented as N/A to prevent recurring false positives.",
-        "attack_scenario": "",
-        "economic_impact": "",
-        "line_numbers": []
+        "chained_findings": [
+          "G"
+        ]
+      }
+    },
+    {
+      "source": "curated",
+      "details": {
+        "description": "upgradeToAndCall executes arbitrary initializer logic immediately after upgrade with admin as msg.sender (privileged blast radius).",
+        "severity": "Medium",
+        "line_numbers": [
+          172,
+          174
+        ],
+        "red_team_argument": "As admin, call upgradeToAndCall with data that triggers privileged code paths in the new implementation (e.g., set sweeping allowances, rewrite roles, move funds). Because delegatecall executes in the proxy context and msg.sender is the admin, any onlyOwner/onlyRole checks that include admin will pass. A single tx can both upgrade and execute privileged actions, reducing detection and rollback windows.",
+        "blue_team_argument": "Only the proxy admin can invoke upgradeToAndCall. Use Safe/timelock, multi-sig approvals, and change management. Keep initializers minimal, idempotent, and guarded. Consider a two-step process: upgradeTo first, then call initialization via appropriate role after verification.",
+        "final_conclusion": "Intended but powerful capability. Treat as high-privilege; prefer two-step upgrades or strong governance controls and pre-simulation when using upgradeToAndCall.",
+        "attack_scenario": "Compromised ProxyAdmin uses upgradeToAndCall to upgrade to an attacker implementation and immediately execute a delegatecall payload that moves protocol funds to attacker-controlled addresses, all in one transaction.",
+        "economic_impact": "Full loss of funds/state controlled by the proxy in a single transaction if admin is compromised or governance is misconfigured.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade"
+        ],
+        "chained_findings": [
+          "Combined with ETH-value sending, can also inadvertently strand ETH at upgrade time."
+        ]
+      }
+    },
+    {
+      "source": "analyze_upgrade_admin",
+      "details": {
+        "description": "upgradeToAndCall executes arbitrary initializer logic with admin as msg.sender via delegatecall immediately after upgrade. This is by design but expands blast radius of a compromised or misused admin and can couple code deployment with privileged state changes.",
+        "severity": "Medium",
+        "line_numbers": [
+          172,
+          174
+        ],
+        "red_team_argument": "As admin, call upgradeToAndCall with data that triggers privileged code paths in the new implementation (e.g., set sweeping allowances, rewrite roles, trigger selfdestruct-style patterns, or move funds). Because delegatecall executes in the proxy context and msg.sender is the admin, any onlyOwner/onlyRole checks that include admin will pass. A single tx can both upgrade and execute privileged actions, reducing detection and rollback windows.",
+        "blue_team_argument": "Only the proxy admin can invoke upgradeToAndCall. Proper governance (Safe + timelock), multi-sig approvals, and change management greatly reduce abuse. Well-designed initializers use initializer/reinitializer guards, do not expose arbitrary external effects, and perform only idempotent state setup.",
+        "final_conclusion": "This is a powerful, intended capability. Treat it as high-privilege and apply a safe two-step: (1) upgradeTo to deploy new code; (2) after verification and optional delay, execute a separate initializer call from an appropriate role (not the proxy admin when possible). If admin-only initialization is required, strongly gate it (multi-sig, timelock), clearly separate minimal init-only logic, and pre-simulate.",
+        "attack_scenario": "Compromised ProxyAdmin uses upgradeToAndCall to upgrade to an attacker implementation and immediately execute a delegatecall payload that moves protocol funds to attacker-controlled addresses, all in one transaction.",
+        "economic_impact": "Full loss of funds/state controlled by the proxy in a single transaction if admin is compromised or governance is misconfigured.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy.sol",
+          "ERC1967Upgrade.sol"
+        ],
+        "chained_findings": [
+          "Combined with F4, can also inadvertently transfer/retain ETH at upgrade time."
+        ]
+      }
+    },
+    {
+      "source": "deep_adversarial",
+      "details": {
+        "description": "C) Beacon runtime DoS if beacon.implementation() returns non-contract",
+        "severity": "Low",
+        "red_team_argument": "In a Beacon proxy system, if the beacon returns a non-contract (EOA/0x0 or self-destructed address), delegatecall reverts on every call, bricking functionality until the beacon is fixed. This manifests as a runtime DoS at the proxy.",
+        "blue_team_argument": "This target uses a Transparent proxy. If BeaconProxy is part of the system, OZ UpgradeableBeacon enforces Address.isContract(newImplementation) on upgrades, preventing non-contract implementations. Only a custom or compromised beacon could return a non-contract at runtime. Keep beacons using OZ’s UpgradeableBeacon and restrict its owner tightly.",
+        "final_conclusion": "Not directly applicable to TransparentUpgradeableProxy. If BeaconProxy is used elsewhere, OZ’s UpgradeableBeacon mitigates this footgun. Treat as low risk unless using a non-OZ beacon.",
+        "attack_scenario": "A custom beacon returns an EOA address by bug or compromise; BeaconProxy delegatecalls revert permanently until the beacon is corrected.",
+        "economic_impact": "Complete service outage for all BeaconProxy instances pointing to the bad beacon; potential revenue loss and inability to interact with contracts.",
+        "contracts_involved": [
+          "BeaconProxy",
+          "UpgradeableBeacon"
+        ]
+      }
+    },
+    {
+      "source": "deep_adversarial",
+      "details": {
+        "description": "H) Role split footgun: admin cannot call implementation functions",
+        "severity": "Low",
+        "line_numbers": [
+          88,
+          89,
+          90,
+          91,
+          92,
+          93,
+          94,
+          95,
+          96,
+          97,
+          98,
+          99,
+          100,
+          101,
+          102,
+          103,
+          104,
+          105
+        ],
+        "red_team_argument": "The admin’s calls never delegate to the implementation; unknown selectors revert with 'admin cannot fallback to proxy target' (line 103). If the same account is used as both admin and as a normal user, it will be unable to use the proxied contract and may interpret the behavior as a DoS.",
+        "blue_team_argument": "Follow the documented pattern: use a dedicated admin account (ideally ProxyAdmin) and separate user/operator EOAs for interacting with the implementation. Educate ops/devs and encode role separation into deployment scripts and runbooks.",
+        "final_conclusion": "Not a bug but a sharp edge of transparency. Enforce strict role separation so the admin never attempts to use the implementation via the proxy.",
+        "attack_scenario": "Project sets a multisig as both ProxyAdmin and application owner address. When the multisig tries to call application functions through the proxy, it gets 'admin cannot fallback' reverts, effectively self-DoSing privileged operations.",
+        "economic_impact": "Operational friction and potential outages for privileged actions if role separation is not enforced; no direct fund loss but can delay incident response/upgrades.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy"
+        ],
+        "chained_findings": [
+          "A",
+          "D",
+          "F"
+        ]
+      }
+    },
+    {
+      "source": "deep_adversarial",
+      "details": {
+        "description": "Initialization order: Transparent proxy runs implementation initializer before setting admin. The ERC1967Proxy constructor delegatecalls _data prior to TransparentUpgradeableProxy setting _ADMIN_SLOT.",
+        "severity": "Low",
+        "red_team_argument": "Any initializer logic that reads the EIP-1967 admin slot or assumes admin is set during initialization will observe the zero address. If teams ship implementations that peek at EIP-1967 slots directly, they could misconfigure roles or perform checks against address(0).",
+        "blue_team_argument": "Standard implementations should not read the proxy’s admin slot. Typical initializers set their own roles (e.g., OwnableUpgradeable) and do not rely on the proxy admin being set. This ordering is by design in OZ, and widely deployed without issue.",
+        "final_conclusion": "The ordering is real but only dangerous if custom initialization relies on the admin slot during init. Treat as a design footgun for custom patterns.",
+        "attack_scenario": "A bespoke initializer verifies that msg.sender equals the proxy admin by reading the EIP-1967 admin slot before it’s set, passes unexpectedly, and stores incorrect role state. Later, once admin is set, role expectations diverge, causing control issues.",
+        "economic_impact": "Misconfiguration/role drift potentially requiring a migration; usually no direct financial loss unless critical controls depend on it.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Proxy",
+          "ERC1967Upgrade"
+        ],
+        "chained_findings": [
+          "H"
+        ]
+      }
+    },
+    {
+      "source": "deep_adversarial",
+      "details": {
+        "description": "Role split footgun: In Transparent proxies, the admin cannot call implementation functions due to the transparency guard in fallback/ifAdmin, causing operational surprises (e.g., failed init calls, paused toggles).",
+        "severity": "Low",
+        "red_team_argument": "If the team expects the admin to operate the app (e.g., call initialize or owner-only functions), those calls will revert or be blocked. A non-admin EOA could front-run an unprotected initializer and seize ownership. This split can lead to misconfigured access control and outages.",
+        "blue_team_argument": "This is by-design. The admin should be a dedicated upgrade authority, and an application owner should be a separate role in the implementation. OZ docs emphasize using upgradeToAndCall to run initializers as the admin and to gate initializers properly.",
+        "final_conclusion": "Present by design; not a bug but a frequent operational pitfall. Ensure clear role separation and proper initializer protection.",
+        "attack_scenario": "Admin tries to call initialize after deployment and gets blocked. A third party notices initialize is public and uninitialized and calls it first, setting themselves as owner and taking control of the app.",
+        "economic_impact": "Loss of application control until recovered via upgrade or governance; potential fund loss depending on exposed owner powers.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy"
+        ],
+        "chained_findings": [
+          "E",
+          "D",
+          "G"
+        ]
+      }
+    },
+    {
+      "source": "curated",
+      "details": {
+        "description": "Role split footgun: admin cannot call implementation functions (by design).",
+        "severity": "Low",
+        "line_numbers": [
+          88,
+          89,
+          90,
+          91,
+          92,
+          93,
+          94,
+          95,
+          96,
+          97,
+          98,
+          99,
+          100,
+          101,
+          102,
+          103,
+          104,
+          105
+        ],
+        "red_team_argument": "The admin’s calls never delegate to the implementation; unknown selectors revert with 'admin cannot fallback to proxy target'. If the same account is used as both admin and as a normal user, it will be unable to use the proxied contract and may interpret the behavior as a DoS.",
+        "blue_team_argument": "Follow the documented pattern: use a dedicated admin account (ideally ProxyAdmin) and separate user/operator EOAs for interacting with the implementation. Encode role separation into deployment scripts and runbooks.",
+        "final_conclusion": "Not a bug but a sharp edge of transparency. Enforce strict role separation so the admin never attempts to use the implementation via the proxy.",
+        "attack_scenario": "Project sets a multisig as both ProxyAdmin and application owner address. When the multisig tries to call application functions through the proxy, it gets 'admin cannot fallback' reverts, effectively self-DoSing privileged operations.",
+        "economic_impact": "Operational friction and potential outages for privileged actions if role separation is not enforced; no direct fund loss but can delay incident response/upgrades.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy"
+        ],
+        "chained_findings": [
+          "A",
+          "D",
+          "F"
+        ]
+      }
+    },
+    {
+      "source": "deep_adversarial",
+      "details": {
+        "description": "Stuck ETH sink around upgradeToAndCall on Transparent proxies: value sent to upgradeToAndCall is accepted by the proxy but not forwarded to the initializer delegatecall, leaving ETH in the proxy balance.",
+        "severity": "Low",
+        "red_team_argument": "Admin (or ProxyAdmin) mistakenly sends msg.value with upgradeToAndCall. ERC1967Upgrade._upgradeToAndCall uses Address.functionDelegateCall (no value forwarding). ETH remains on the proxy. If the implementation lacks explicit withdrawal/escrow logic, that value is effectively stuck.",
+        "blue_team_argument": "This is expected OZ behavior and documented. Use upgradeTo (no call) or ensure the implementation has a safe withdrawal path and does not rely on msg.value during initialization. Operational runbooks can require msg.value==0 for admin upgrades.",
+        "final_conclusion": "Present and well-known. Operational footgun rather than a code exploit.",
+        "attack_scenario": "Operator runs upgradeToAndCall with initializer expecting to receive ETH deposit on init. The call runs without value; the proxy balance increases and the initialization logic receives 0, possibly failing invariants. If no withdrawal route exists, the ETH cannot be recovered.",
+        "economic_impact": "Loss of operational funds equal to msg.value trapped in the proxy; may require deploying a new implementation with withdrawal and another upgrade to recover, or funds remain stuck.",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade",
+          "Proxy"
+        ],
+        "chained_findings": [
+          "H",
+          "G"
+        ]
       }
     }
   ],
   "meta": {
-    "project_root": "/app/projects/uniswapv3",
+    "project_root": "/app/projects/balancer",
     "files": [
       "Address.sol",
       "BeaconProxy.sol",
@@ -645,32 +1169,6 @@
       "UpgradeableBeacon.sol",
       "draft-IERC1822.sol"
     ],
-    "generated_at": 1761552331
-  },
-  "log": [
-    "Step 1: Start Phase-1 Recon by enumerating repository contents to scope Solidity files for analysis.\n\nAction: list_files()",
-    "Step 2: Phase-1 Recon: begin reading HOT proxy contract source to prepare for proxy persona analyses.\n\nAction: read_file('TransparentUpgradeableProxy.sol')",
-    "Step 3: Continue Phase-1 Recon by reading the HOT dependency for proxy storage and upgrade mechanics.\n\nAction: read_file('ERC1967Upgrade.sol')",
-    "Step 4: Phase-1 Recon: read another HOT component managing upgrades and admin operations.\n\nAction: read_file('ProxyAdmin.sol')",
-    "Step 5: Continue Phase-1 Recon by reading the HOT Beacon proxy implementation to prepare for mandatory proxy persona analyses.\n\nAction: read_file('BeaconProxy.sol')",
-    "Step 6: Continue Phase-1 Recon to cover HOT proxy variants by reading ERC1967Proxy implementation.\n\nAction: read_file('ERC1967Proxy.sol')",
-    "Step 7: Continue Phase-1 Recon by reading base proxy abstract contract used by multiple HOT contracts to complete dependency understanding before creating the system map.\n\nAction: read_file('Proxy.sol')",
-    "Step 8: Finish Phase-1 Recon by reading remaining HOT beacon component to understand beacon runtime and upgrade flow before creating the system map.\n\nAction: read_file('UpgradeableBeacon.sol')",
-    "Step 9: Complete Phase-1 Recon by reading remaining core libraries before creating the system map.\n\nAction: read_file('Address.sol')",
-    "Step 10: Complete Phase-1 Recon by reading remaining critical storage utility used by ERC1967 upgrade patterns before creating the system map.\n\nAction: read_file('StorageSlot.sol')",
-    "Step 11: Complete Phase-1 Recon by reading remaining core access control dependency used by ProxyAdmin before creating the system map.\n\nAction: read_file('Ownable.sol')",
-    "Step 12: Complete Phase-1 Recon by reading remaining foundational utility contract before creating the system map.\n\nAction: read_file('Context.sol')",
-    "Step 13: Complete Phase-1 Recon by reading remaining interface files to ensure a complete system view before creating the system map.\n\nAction: read_file('IBeacon.sol')",
-    "Step 14: Complete Phase-1 Recon by reading remaining interface for ERC1967 to finalize inputs before creating the system map.\n\nAction: read_file('IERC1967.sol')",
-    "Step 15: Complete Phase-1 Recon by reading the remaining interface related to UUPS (ERC1822) before creating the system map.\n\nAction: read_file('draft-IERC1822.sol')",
-    "Step 16: All relevant Solidity files have been read. Build the system map to guide HOT target triage and mandatory proxy persona analyses.\n\nAction: create_system_map()",
-    "Step 17: Begin mandatory proxy persona sequence: deep adversarial analysis of TransparentUpgradeableProxy to map admin paths, fallback gating, and upgrade surfaces.\n\nAction: run_deep_adversarial_analysis('TransparentUpgradeableProxy.sol')",
-    "Step 18: Proceed with mandatory proxy persona sequence step ii: analyze ERC1967 storage layout and slot correctness to detect collisions and upgrade-safety issues.\n\nAction: analyze_proxy_storage('ERC1967Upgrade.sol')",
-    "Step 19: Complete mandatory proxy persona step iii: analyze upgrade admin paths, admin-gating, and ProxyAdmin interactions for TransparentUpgradeableProxy.\n\nAction: analyze_upgrade_admin('TransparentUpgradeableProxy.sol')",
-    "Step 20: Mandatory proxy persona: analyze BeaconProxy for beacon runtime and upgrade risks before system-level synthesis.\n\nAction: run_deep_adversarial_analysis('BeaconProxy.sol')",
-    "Step 21: Proceed to system-level analysis to map how proxies, ProxyAdmin, and beacons interact and surface cross-contract risk paths.\n\nAction: analyze_contract_interactions()",
-    "Step 22: System-level stage: synthesize exploit chains across proxies, ProxyAdmin, and beacons using prior interaction analysis to prepare for curation.\n\nAction: synthesize_exploit_chains()",
-    "Step 23: System-level analysis and synthesis complete. Proceed to curate and consolidate findings into a professional report before any optional PoC generation.\n\nAction: curate_and_consolidate_findings()",
-    "Step 24: All mandatory proxy analyses and system-level synthesis are complete with coverage achieved. Conclude the audit workflow.\n\nAction: stop()"
-  ]
+    "generated_at": 1761703512
+  }
 }

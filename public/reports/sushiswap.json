@@ -1,6 +1,226 @@
 {
   "security_score": 12,
-  "scope": {
+  "findings": [
+    {
+      "source": "unknown",
+      "details": {
+        "description": "Setting the proxy admin to the proxy's own address via changeAdmin(address(this)) makes all admin-gated functions unreachable. This permanently freezes upgrades and admin changes.",
+        "severity": "High",
+        "line_numbers": [
+          146,
+          153
+        ],
+        "blue_team_argument": "Recommendation: Forbid newAdmin == address(0) and newAdmin == address(proxy) in operational tooling or a hardened ProxyAdmin wrapper.",
+        "final_conclusion": "Status: Verified\n\nEvidence: TransparentUpgradeableProxy.sol lines 146, 153; ERC1967Upgrade.sol",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade",
+          "ProxyAdmin",
+          "TransparentUpgradeableProxy.sol",
+          "ERC1967Upgrade.sol"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "Transparent pattern routes admin calls to internal dispatch and reverts on non-admin-ABI selectors. If the implementation owner/pauser is the admin/ProxyAdmin, privileged functions become uncallable via the proxy.",
+        "severity": "Medium",
+        "line_numbers": [
+          88,
+          104
+        ],
+        "blue_team_argument": "Recommendation: Use distinct addresses for proxy admin and implementation roles (owner/pauser/operators). Never assign onlyOwner to ProxyAdmin.",
+        "final_conclusion": "Status: Verified\n\nEvidence: TransparentUpgradeableProxy.sol lines 88, 104",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "Implementation (Ownable/Pausable)",
+          "TransparentUpgradeableProxy.sol"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "Initializers executed via delegatecall observe msg.sender as the admin (upgradeToAndCall) or the proxy deployer (constructor _data). Using msg.sender to set owner/roles can misassign control and brick onlyOwner operations under transparency.",
+        "severity": "High",
+        "line_numbers": [
+          63,
+          69,
+          172,
+          176
+        ],
+        "blue_team_argument": "Recommendation: Pass explicit owner/governance parameters in initializer calldata; prefer two-step upgrades where the runtime owner calls initialize post-upgrade.",
+        "final_conclusion": "Status: Verified\n\nEvidence: TransparentUpgradeableProxy.sol lines 63, 69; TransparentUpgradeableProxy.sol lines 172, 176",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Proxy",
+          "Implementation",
+          "TransparentUpgradeableProxy.sol"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "ProxyAdmin.upgrade/upgradeAndCall/changeProxyAdmin rely on the proxy's gating. If ProxyAdmin is not the current admin, calls are transparently forwarded to the implementation. With UUPS-style implementations, this can hit upgradeTo/upgradeToAndCall unexpectedly.",
+        "severity": "High",
+        "line_numbers": [
+          88,
+          104
+        ],
+        "blue_team_argument": "Recommendation: Add a preflight check in scripts: require(getProxyAdmin(proxy) == address(ProxyAdmin)) before mutators. Avoid mixing Transparent proxies with implementations that expose upgrade entry points.",
+        "final_conclusion": "Status: Verified\n\nEvidence: TransparentUpgradeableProxy.sol lines 88, 104; ProxyAdmin.sol",
+        "contracts_involved": [
+          "ProxyAdmin",
+          "TransparentUpgradeableProxy",
+          "UUPSUpgradeable (if used)",
+          "TransparentUpgradeableProxy.sol",
+          "ProxyAdmin.sol"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "If a Transparent proxy front-ends a UUPS implementation whose _authorizeUpgrade authorizes ProxyAdmin (or a role it controls), and ProxyAdmin is not the proxy admin, calling ProxyAdmin.upgrade may forward to the implementation's upgradeTo, enabling an upgrade via the implementation path.",
+        "severity": "Critical",
+        "line_numbers": [
+          88,
+          104
+        ],
+        "blue_team_argument": "Recommendation: Do not mix Transparent proxies with UUPS implementations unless _authorizeUpgrade is strictly locked to a governance address unrelated to ProxyAdmin and the admin is correct. Prefer UUPS proxies for UUPS implementations.",
+        "final_conclusion": "Status: Conditional\n\nEvidence: TransparentUpgradeableProxy.sol lines 88, 104; draft-IERC1822.sol",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "UUPSUpgradeable implementation",
+          "TransparentUpgradeableProxy.sol",
+          "draft-IERC1822.sol"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "BeaconProxy delegates to the address returned by the beacon without a runtime isContract guard. A buggy or compromised beacon pointing to an EOA/non-contract causes every call to revert.",
+        "severity": "Medium",
+        "blue_team_argument": "Recommendation: Use OpenZeppelin UpgradeableBeacon which enforces isContract on upgrade, and add monitoring and strict controls for beacon upgrades.",
+        "final_conclusion": "Status: Verified\n\nEvidence: BeaconProxy.sol; ERC1967Upgrade.sol; UpgradeableBeacon.sol",
+        "contracts_involved": [
+          "BeaconProxy",
+          "UpgradeableBeacon",
+          "ERC1967Upgrade",
+          "BeaconProxy.sol",
+          "ERC1967Upgrade.sol",
+          "UpgradeableBeacon.sol"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "UpgradeableBeacon lacks upgrade-and-call; new storage must be initialized later on each BeaconProxy. Skipping this leaves instances in inconsistent or bricked states.",
+        "severity": "Medium",
+        "blue_team_argument": "Recommendation: Add idempotent initializeV2 entry points; after upgrading the beacon, run a migration to initialize each instance.",
+        "final_conclusion": "Status: Advisory\n\nEvidence: UpgradeableBeacon.sol; BeaconProxy.sol",
+        "contracts_involved": [
+          "UpgradeableBeacon",
+          "BeaconProxy",
+          "UpgradeableBeacon.sol",
+          "BeaconProxy.sol"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "Admin operations are implemented via internal dispatch, not via regular external functions. Adding externals with the same selectors (upgradeTo, admin, implementation, changeAdmin) will hijack selector resolution and hide the intended admin ops.",
+        "severity": "Medium",
+        "line_numbers": [
+          71,
+          79
+        ],
+        "blue_team_argument": "Recommendation: Do not extend TransparentUpgradeableProxy with new external/public functions. Prefer composition or wrappers.",
+        "final_conclusion": "Status: Advisory\n\nEvidence: TransparentUpgradeableProxy.sol lines 71, 79",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "TransparentUpgradeableProxy.sol"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "ERC1967Proxy constructor delegatecalls _data before setting the admin. Any initializer reading the proxy admin observes zero and msg.sender is the deployer.",
+        "severity": "Low",
+        "line_numbers": [
+          63,
+          69
+        ],
+        "blue_team_argument": "Recommendation: Avoid reading proxy admin during initialization; pass required governance addresses explicitly.",
+        "final_conclusion": "Status: Verified\n\nEvidence: TransparentUpgradeableProxy.sol lines 63, 69",
+        "contracts_involved": [
+          "ERC1967Proxy",
+          "TransparentUpgradeableProxy",
+          "TransparentUpgradeableProxy.sol"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "upgradeToAndCall is payable and does not enforce msg.value == 0; if the initializer doesn't move or refund ETH, it remains on the proxy balance.",
+        "severity": "Low",
+        "line_numbers": [
+          172,
+          176
+        ],
+        "blue_team_argument": "Recommendation: Operationally enforce zero value for administrative upgrades unless explicitly required, and add a guarded rescue path if needed.",
+        "final_conclusion": "Status: Verified\n\nEvidence: TransparentUpgradeableProxy.sol lines 172, 176",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "ERC1967Upgrade",
+          "TransparentUpgradeableProxy.sol"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "upgradeToAndCall executes initializer logic with msg.sender = admin, which can have surprising access-control or side effects.",
+        "severity": "Medium",
+        "line_numbers": [
+          172,
+          176
+        ],
+        "blue_team_argument": "Recommendation: Prefer upgradeTo followed by an initializeV2 call from the runtime owner/pauser.",
+        "final_conclusion": "Status: Advisory\n\nEvidence: TransparentUpgradeableProxy.sol lines 172, 176",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "Implementation",
+          "TransparentUpgradeableProxy.sol"
+        ]
+      }
+    },
+    {
+      "source": "unknown",
+      "details": {
+        "description": "The TransparentUpgradeableProxy file declares OpenZeppelin v4.8.3, which includes the selector clash fix.",
+        "severity": "Info",
+        "line_numbers": [
+          1,
+          2
+        ],
+        "blue_team_argument": "Recommendation: None.",
+        "final_conclusion": "Status: Verified\n\nEvidence: TransparentUpgradeableProxy.sol lines 1, 2",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy",
+          "TransparentUpgradeableProxy.sol"
+        ]
+      }
+    }
+  ],
+  "meta": {
     "project_root": "/app/projects/sushiswap",
     "files": [
       "Address.sol",
@@ -17,338 +237,6 @@
       "TransparentUpgradeableProxy.sol",
       "UpgradeableBeacon.sol",
       "draft-IERC1822.sol"
-    ],
-    "assumptions": [
-      "OpenZeppelin Contracts v4.8.3 codebase",
-      "Standard OZ ProxyAdmin, BeaconProxy, UpgradeableBeacon behavior"
     ]
-  },
-  "findings": [
-    {
-      "id": "TUP-ADMIN-SELF-ASSIGNMENT-BRICK",
-      "title": "Self-admin assignment bricks admin operations",
-      "severity": "High",
-      "status": "Verified",
-      "description": "Setting the proxy admin to the proxy's own address via changeAdmin(address(this)) makes all admin-gated functions unreachable. This permanently freezes upgrades and admin changes.",
-      "evidence": [
-        {
-          "file": "TransparentUpgradeableProxy.sol",
-          "lines": [
-            146,
-            153
-          ]
-        },
-        {
-          "file": "ERC1967Upgrade.sol",
-          "lines": []
-        }
-      ],
-      "recommendation": "Forbid newAdmin == address(0) and newAdmin == address(proxy) in operational tooling or a hardened ProxyAdmin wrapper.",
-      "contracts_involved": [
-        "TransparentUpgradeableProxy",
-        "ERC1967Upgrade",
-        "ProxyAdmin"
-      ],
-      "deduped_from_sources": [
-        "curated",
-        "deep_adversarial",
-        "analyze_proxy_storage",
-        "synthesis"
-      ]
-    },
-    {
-      "id": "TUP-ADMIN-FALLBACK-BLOCK",
-      "title": "Admin is blocked from implementation calls (requires role split)",
-      "severity": "Medium",
-      "status": "Verified",
-      "description": "Transparent pattern routes admin calls to internal dispatch and reverts on non-admin-ABI selectors. If the implementation owner/pauser is the admin/ProxyAdmin, privileged functions become uncallable via the proxy.",
-      "evidence": [
-        {
-          "file": "TransparentUpgradeableProxy.sol",
-          "lines": [
-            88,
-            104
-          ]
-        }
-      ],
-      "recommendation": "Use distinct addresses for proxy admin and implementation roles (owner/pauser/operators). Never assign onlyOwner to ProxyAdmin.",
-      "contracts_involved": [
-        "TransparentUpgradeableProxy",
-        "Implementation (Ownable/Pausable)"
-      ],
-      "deduped_from_sources": [
-        "curated",
-        "deep_adversarial",
-        "analyze_upgrade_admin"
-      ]
-    },
-    {
-      "id": "INIT-MSGSENDER-DRIFT",
-      "title": "Initializer ownership/roles drift when relying on msg.sender",
-      "severity": "High",
-      "status": "Verified",
-      "description": "Initializers executed via delegatecall observe msg.sender as the admin (upgradeToAndCall) or the proxy deployer (constructor _data). Using msg.sender to set owner/roles can misassign control and brick onlyOwner operations under transparency.",
-      "evidence": [
-        {
-          "file": "TransparentUpgradeableProxy.sol",
-          "lines": [
-            63,
-            69
-          ]
-        },
-        {
-          "file": "TransparentUpgradeableProxy.sol",
-          "lines": [
-            172,
-            176
-          ]
-        }
-      ],
-      "recommendation": "Pass explicit owner/governance parameters in initializer calldata; prefer two-step upgrades where the runtime owner calls initialize post-upgrade.",
-      "contracts_involved": [
-        "TransparentUpgradeableProxy",
-        "ERC1967Proxy",
-        "Implementation"
-      ],
-      "deduped_from_sources": [
-        "curated",
-        "deep_adversarial"
-      ]
-    },
-    {
-      "id": "PADMIN-NO-ADMIN-PREASSERT",
-      "title": "ProxyAdmin mutators don't assert they are the current proxy admin",
-      "severity": "High",
-      "status": "Verified",
-      "description": "ProxyAdmin.upgrade/upgradeAndCall/changeProxyAdmin rely on the proxy's gating. If ProxyAdmin is not the current admin, calls are transparently forwarded to the implementation. With UUPS-style implementations, this can hit upgradeTo/upgradeToAndCall unexpectedly.",
-      "evidence": [
-        {
-          "file": "TransparentUpgradeableProxy.sol",
-          "lines": [
-            88,
-            104
-          ]
-        },
-        {
-          "file": "ProxyAdmin.sol",
-          "lines": []
-        }
-      ],
-      "recommendation": "Add a preflight check in scripts: require(getProxyAdmin(proxy) == address(ProxyAdmin)) before mutators. Avoid mixing Transparent proxies with implementations that expose upgrade entry points.",
-      "contracts_involved": [
-        "ProxyAdmin",
-        "TransparentUpgradeableProxy",
-        "UUPSUpgradeable (if used)"
-      ],
-      "deduped_from_sources": [
-        "curated",
-        "deep_adversarial",
-        "analyze_upgrade_admin"
-      ]
-    },
-    {
-      "id": "TUPxUUPS-COLLISION-UPGRADE",
-      "title": "Transparent x UUPS pattern collision enables unexpected upgrade path",
-      "severity": "Critical",
-      "status": "Conditional",
-      "description": "If a Transparent proxy front-ends a UUPS implementation whose _authorizeUpgrade authorizes ProxyAdmin (or a role it controls), and ProxyAdmin is not the proxy admin, calling ProxyAdmin.upgrade may forward to the implementation's upgradeTo, enabling an upgrade via the implementation path.",
-      "evidence": [
-        {
-          "file": "TransparentUpgradeableProxy.sol",
-          "lines": [
-            88,
-            104
-          ]
-        },
-        {
-          "file": "draft-IERC1822.sol",
-          "lines": []
-        }
-      ],
-      "recommendation": "Do not mix Transparent proxies with UUPS implementations unless _authorizeUpgrade is strictly locked to a governance address unrelated to ProxyAdmin and the admin is correct. Prefer UUPS proxies for UUPS implementations.",
-      "contracts_involved": [
-        "TransparentUpgradeableProxy",
-        "UUPSUpgradeable implementation"
-      ],
-      "deduped_from_sources": [
-        "curated"
-      ]
-    },
-    {
-      "id": "BEACON-RUNTIME-NONCONTRACT-DOS",
-      "title": "BeaconProxy can DoS if beacon.implementation() returns a non-contract",
-      "severity": "Medium",
-      "status": "Verified",
-      "description": "BeaconProxy delegates to the address returned by the beacon without a runtime isContract guard. A buggy or compromised beacon pointing to an EOA/non-contract causes every call to revert.",
-      "evidence": [
-        {
-          "file": "BeaconProxy.sol",
-          "lines": []
-        },
-        {
-          "file": "ERC1967Upgrade.sol",
-          "lines": []
-        },
-        {
-          "file": "UpgradeableBeacon.sol",
-          "lines": []
-        }
-      ],
-      "recommendation": "Use OpenZeppelin UpgradeableBeacon which enforces isContract on upgrade, and add monitoring and strict controls for beacon upgrades.",
-      "contracts_involved": [
-        "BeaconProxy",
-        "UpgradeableBeacon",
-        "ERC1967Upgrade"
-      ],
-      "deduped_from_sources": [
-        "curated",
-        "analyze_proxy_storage"
-      ]
-    },
-    {
-      "id": "BEACON-POST-UPGRADE-INIT",
-      "title": "Beacon upgrades require per-instance initialization planning",
-      "severity": "Medium",
-      "status": "Advisory",
-      "description": "UpgradeableBeacon lacks upgrade-and-call; new storage must be initialized later on each BeaconProxy. Skipping this leaves instances in inconsistent or bricked states.",
-      "evidence": [
-        {
-          "file": "UpgradeableBeacon.sol",
-          "lines": []
-        },
-        {
-          "file": "BeaconProxy.sol",
-          "lines": []
-        }
-      ],
-      "recommendation": "Add idempotent initializeV2 entry points; after upgrading the beacon, run a migration to initialize each instance.",
-      "contracts_involved": [
-        "UpgradeableBeacon",
-        "BeaconProxy"
-      ],
-      "deduped_from_sources": [
-        "curated"
-      ]
-    },
-    {
-      "id": "TUP-SELECTOR-SHADOWING",
-      "title": "Extending TransparentUpgradeableProxy with external/public functions can shadow admin ops",
-      "severity": "Medium",
-      "status": "Advisory",
-      "description": "Admin operations are implemented via internal dispatch, not via regular external functions. Adding externals with the same selectors (upgradeTo, admin, implementation, changeAdmin) will hijack selector resolution and hide the intended admin ops.",
-      "evidence": [
-        {
-          "file": "TransparentUpgradeableProxy.sol",
-          "lines": [
-            71,
-            79
-          ]
-        }
-      ],
-      "recommendation": "Do not extend TransparentUpgradeableProxy with new external/public functions. Prefer composition or wrappers.",
-      "contracts_involved": [
-        "TransparentUpgradeableProxy"
-      ],
-      "deduped_from_sources": [
-        "curated"
-      ]
-    },
-    {
-      "id": "EIP1967-ADMIN-SLOT-UNSET-AT-INIT",
-      "title": "Admin slot unset during constructor delegatecall",
-      "severity": "Low",
-      "status": "Verified",
-      "description": "ERC1967Proxy constructor delegatecalls _data before setting the admin. Any initializer reading the proxy admin observes zero and msg.sender is the deployer.",
-      "evidence": [
-        {
-          "file": "TransparentUpgradeableProxy.sol",
-          "lines": [
-            63,
-            69
-          ]
-        }
-      ],
-      "recommendation": "Avoid reading proxy admin during initialization; pass required governance addresses explicitly.",
-      "contracts_involved": [
-        "ERC1967Proxy",
-        "TransparentUpgradeableProxy"
-      ],
-      "deduped_from_sources": [
-        "curated",
-        "deep_adversarial"
-      ]
-    },
-    {
-      "id": "TUP-UPGRADE-ETH-SINK",
-      "title": "ETH may become stuck via upgradeToAndCall",
-      "severity": "Low",
-      "status": "Verified",
-      "description": "upgradeToAndCall is payable and does not enforce msg.value == 0; if the initializer doesn't move or refund ETH, it remains on the proxy balance.",
-      "evidence": [
-        {
-          "file": "TransparentUpgradeableProxy.sol",
-          "lines": [
-            172,
-            176
-          ]
-        }
-      ],
-      "recommendation": "Operationally enforce zero value for administrative upgrades unless explicitly required, and add a guarded rescue path if needed.",
-      "contracts_involved": [
-        "TransparentUpgradeableProxy",
-        "ERC1967Upgrade"
-      ],
-      "deduped_from_sources": [
-        "curated",
-        "deep_adversarial"
-      ]
-    },
-    {
-      "id": "TUP-TWOSTEP-UPGRADE",
-      "title": "Two-step upgrade is safer than upgradeToAndCall",
-      "severity": "Medium",
-      "status": "Advisory",
-      "description": "upgradeToAndCall executes initializer logic with msg.sender = admin, which can have surprising access-control or side effects.",
-      "evidence": [
-        {
-          "file": "TransparentUpgradeableProxy.sol",
-          "lines": [
-            172,
-            176
-          ]
-        }
-      ],
-      "recommendation": "Prefer upgradeTo followed by an initializeV2 call from the runtime owner/pauser.",
-      "contracts_involved": [
-        "TransparentUpgradeableProxy",
-        "Implementation"
-      ],
-      "deduped_from_sources": [
-        "analyze_upgrade_admin"
-      ]
-    },
-    {
-      "id": "CVE-2023-30541-NOT-APPLICABLE",
-      "title": "CVE-2023-30541 selector clash: not applicable to v4.8.3",
-      "severity": "Informational",
-      "status": "Verified",
-      "description": "The TransparentUpgradeableProxy file declares OpenZeppelin v4.8.3, which includes the selector clash fix.",
-      "evidence": [
-        {
-          "file": "TransparentUpgradeableProxy.sol",
-          "lines": [
-            1,
-            2
-          ]
-        }
-      ],
-      "recommendation": "None.",
-      "contracts_involved": [
-        "TransparentUpgradeableProxy"
-      ],
-      "deduped_from_sources": [
-        "applicability"
-      ]
-    }
-  ]
+  }
 }

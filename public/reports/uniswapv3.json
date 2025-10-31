@@ -2,329 +2,175 @@
   "security_score": 19,
   "findings": [
     {
-      "id": "TUP-INIT-MSGSENDER",
       "source": "cleaned",
       "details": {
-        "title": "Initializer using msg.sender under Transparent proxies assigns ownership to ProxyAdmin",
         "description": "During upgradeToAndCall, the initializer runs via delegatecall with msg.sender equal to the proxy admin. If the initializer derives ownership or roles from msg.sender, ownership becomes the ProxyAdmin, and because the admin cannot fallback to the implementation, owner-only functions may be unreachable via the proxy.",
         "severity": "High",
-        "status": "Valid",
-        "evidence": [
-          {
-            "file": "ERC1967Upgrade (8).sol",
-            "line": 61
-          },
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 88
-          },
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 95
-          }
-        ],
-        "recommendation": "Make initializers accept explicit owner/role parameters or call reinitializers from a non-admin account in a two-step flow."
+        "blue_team_argument": "Recommendation: Make initializers accept explicit owner/role parameters or call reinitializers from a non-admin account in a two-step flow.",
+        "final_conclusion": "Status: Valid\n\nEvidence: ERC1967Upgrade (8).sol; TransparentUpgradeableProxy (8).sol; TransparentUpgradeableProxy (8).sol",
+        "contracts_involved": [
+          "ERC1967Upgrade (8).sol",
+          "TransparentUpgradeableProxy (8).sol"
+        ]
       }
     },
     {
-      "id": "TUP-EXTENSION-SELECTOR-CLASH",
       "source": "cleaned",
       "details": {
-        "title": "Extending TransparentUpgradeableProxy can shadow admin functions",
         "description": "Adding new external/public functions to TransparentUpgradeableProxy can accidentally share selectors with admin ops and take precedence, making admin functions inaccessible.",
         "severity": "Low",
-        "status": "Valid",
-        "evidence": [
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 53
-          }
-        ],
-        "recommendation": "Do not extend the proxy with new externals; use ProxyAdmin or composition."
+        "blue_team_argument": "Recommendation: Do not extend the proxy with new externals; use ProxyAdmin or composition.",
+        "final_conclusion": "Status: Valid\n\nEvidence: TransparentUpgradeableProxy (8).sol",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy (8).sol"
+        ]
       }
     },
     {
-      "id": "TUP-ETH-SINK",
       "source": "cleaned",
       "details": {
-        "title": "ETH can be stranded via upgradeToAndCall if initializer ignores value",
         "description": "All admin dispatches enforce msg.value == 0 except upgradeToAndCall, which is payable and does not call _requireZeroValue. If the initializer doesn't handle the value, ETH remains in the proxy balance and may be unrecoverable.",
         "severity": "Medium",
-        "status": "Valid",
-        "evidence": [
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 95
-          },
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 121
-          },
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 135
-          },
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 147
-          },
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 158
-          },
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 159
-          },
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 190
-          }
-        ],
-        "recommendation": "Avoid sending ETH during upgrades unless required, or ensure the initializer consumes/forwards it and a sweep path exists."
+        "blue_team_argument": "Recommendation: Avoid sending ETH during upgrades unless required, or ensure the initializer consumes/forwards it and a sweep path exists.",
+        "final_conclusion": "Status: Valid\n\nEvidence: TransparentUpgradeableProxy (8).sol; TransparentUpgradeableProxy (8).sol; TransparentUpgradeableProxy (8).sol; TransparentUpgradeableProxy (8).sol; TransparentUpgradeableProxy (8).sol; TransparentUpgradeableProxy (8).sol; TransparentUpgradeableProxy (8).sol",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy (8).sol"
+        ]
       }
     },
     {
-      "id": "TUP-INIT-ORDER",
       "source": "cleaned",
       "details": {
-        "title": "Initializer executes before admin is set in constructor",
         "description": "ERC1967Proxy runs the optional initialization call in its constructor before TransparentUpgradeableProxy calls _changeAdmin(admin_), so reading the admin slot during initialization will see address(0).",
         "severity": "Low",
-        "status": "Valid",
-        "evidence": [
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 63
-          },
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 68
-          }
-        ],
-        "recommendation": "Avoid relying on the proxy's admin value during initialization and don't reuse the EIP-1967 admin slot in implementations."
+        "blue_team_argument": "Recommendation: Avoid relying on the proxy's admin value during initialization and don't reuse the EIP-1967 admin slot in implementations.",
+        "final_conclusion": "Status: Valid\n\nEvidence: TransparentUpgradeableProxy (8).sol; TransparentUpgradeableProxy (8).sol",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy (8).sol"
+        ]
       }
     },
     {
-      "id": "TUP-ADMIN-SELF",
       "source": "cleaned",
       "details": {
-        "title": "Setting admin to the proxy address bricks admin operations",
         "description": "Transparent proxy allows changing admin to any nonzero address. Setting admin to address(this) makes admin-only entrypoints unreachable to any external caller.",
         "severity": "High",
-        "status": "Valid",
-        "evidence": [
-          {
-            "file": "ERC1967Upgrade (8).sol",
-            "line": 114
-          },
-          {
-            "file": "ERC1967Upgrade (8).sol",
-            "line": 115
-          }
-        ],
-        "recommendation": "Guard against newAdmin == address(this) in tooling or wrappers; validate admin rotations."
+        "blue_team_argument": "Recommendation: Guard against newAdmin == address(this) in tooling or wrappers; validate admin rotations.",
+        "final_conclusion": "Status: Valid\n\nEvidence: ERC1967Upgrade (8).sol; ERC1967Upgrade (8).sol",
+        "contracts_involved": [
+          "ERC1967Upgrade (8).sol"
+        ]
       }
     },
     {
-      "id": "TUP-ROLE-SPLIT",
       "source": "cleaned",
       "details": {
-        "title": "Admin cannot fallback to implementation (role-split footgun)",
         "description": "If msg.sender is the admin, TransparentUpgradeableProxy routes calls only to admin ops and reverts for other selectors, preventing the admin from using the app through the proxy.",
         "severity": "Low",
-        "status": "Valid",
-        "evidence": [
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 88
-          },
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 103
-          }
-        ],
-        "recommendation": "Use a dedicated admin account and a separate user/operator account."
+        "blue_team_argument": "Recommendation: Use a dedicated admin account and a separate user/operator account.",
+        "final_conclusion": "Status: Valid\n\nEvidence: TransparentUpgradeableProxy (8).sol; TransparentUpgradeableProxy (8).sol",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy (8).sol"
+        ]
       }
     },
     {
-      "id": "BEACON-NO-RUNTIME-GUARD",
       "source": "cleaned",
       "details": {
-        "title": "BeaconProxy lacks runtime isContract guard on implementation",
         "description": "BeaconProxy delegates to the address returned by the beacon at runtime without verifying it has code. A compromised/misconfigured beacon can return a non-contract, causing DoS.",
         "severity": "Medium",
-        "status": "Valid",
-        "evidence": [
-          {
-            "file": "BeaconProxy (8).sol",
-            "line": 44
-          },
-          {
-            "file": "ERC1967Upgrade (8).sol",
-            "line": 145
-          },
-          {
-            "file": "ERC1967Upgrade (8).sol",
-            "line": 146
-          },
-          {
-            "file": "ERC1967Upgrade (8).sol",
-            "line": 149
-          }
-        ],
-        "recommendation": "Use UpgradeableBeacon and enforce isContract in beacon upgrades; restrict beacon ownership."
+        "blue_team_argument": "Recommendation: Use UpgradeableBeacon and enforce isContract in beacon upgrades; restrict beacon ownership.",
+        "final_conclusion": "Status: Valid\n\nEvidence: BeaconProxy (8).sol; ERC1967Upgrade (8).sol; ERC1967Upgrade (8).sol; ERC1967Upgrade (8).sol",
+        "contracts_involved": [
+          "BeaconProxy (8).sol",
+          "ERC1967Upgrade (8).sol"
+        ]
       }
     },
     {
-      "id": "ERC1967-INIT-DELEGATECALL-POWER",
       "source": "cleaned",
       "details": {
-        "title": "Initialization via delegatecall can mutate ERC1967 slots",
         "description": "During upgrades with data, ERC1967Upgrade performs a delegatecall to the new implementation. Initialization code can write directly to _ADMIN_SLOT, _IMPLEMENTATION_SLOT or _BEACON_SLOT.",
         "severity": "Medium",
-        "status": "Valid",
-        "evidence": [
-          {
-            "file": "ERC1967Upgrade (8).sol",
-            "line": 61
-          },
-          {
-            "file": "ERC1967Upgrade (8).sol",
-            "line": 68
-          }
-        ],
-        "recommendation": "Treat initializers as fully privileged; only upgrade to audited code and disallow slot writes from public/external functions."
+        "blue_team_argument": "Recommendation: Treat initializers as fully privileged; only upgrade to audited code and disallow slot writes from public/external functions.",
+        "final_conclusion": "Status: Valid\n\nEvidence: ERC1967Upgrade (8).sol; ERC1967Upgrade (8).sol",
+        "contracts_involved": [
+          "ERC1967Upgrade (8).sol"
+        ]
       }
     },
     {
-      "id": "PROXYADMIN-NO-ADMIN-ASSERT",
       "source": "cleaned",
       "details": {
-        "title": "ProxyAdmin mutators don't assert current admin",
         "description": "ProxyAdmin.upgrade/upgradeAndCall/changeProxyAdmin invoke admin ops without first asserting that ProxyAdmin is the proxy's current admin, relying on the proxy's gating. If it's not the admin, calls fall through transparent fallback and may hit same-selector functions in the implementation.",
         "severity": "Medium",
-        "status": "Valid",
-        "evidence": [
-          {
-            "file": "ProxyAdmin (8).sol",
-            "line": 36
-          },
-          {
-            "file": "ProxyAdmin (8).sol",
-            "line": 62
-          },
-          {
-            "file": "ProxyAdmin (8).sol",
-            "line": 74
-          }
-        ],
-        "recommendation": "Preflight check with getProxyAdmin() and revert if not admin; enforce mapping of proxy to admin in ops."
+        "blue_team_argument": "Recommendation: Preflight check with getProxyAdmin() and revert if not admin; enforce mapping of proxy to admin in ops.",
+        "final_conclusion": "Status: Valid\n\nEvidence: ProxyAdmin (8).sol; ProxyAdmin (8).sol; ProxyAdmin (8).sol",
+        "contracts_involved": [
+          "ProxyAdmin (8).sol"
+        ]
       }
     },
     {
-      "id": "BEACON-TWO-STEP-INIT-RACE",
       "source": "cleaned",
       "details": {
-        "title": "Beacon upgrades require separate initialization that can be front-run",
         "description": "UpgradeableBeacon only supports upgradeTo without an optional call, so any new initializer must be invoked separately via each BeaconProxy. If that initializer assigns roles from msg.sender, an arbitrary EOA can front-run and seize control.",
         "severity": "High",
-        "status": "Conditional",
-        "evidence": [
-          {
-            "file": "BeaconProxy (8).sol",
-            "line": 44
-          },
-          {
-            "file": "UpgradeableBeacon (8).sol",
-            "line": 49
-          }
-        ],
-        "recommendation": "Avoid msg.sender-derived roles in new initializers; add access control and coordinate immediate post-upgrade initialization."
+        "blue_team_argument": "Recommendation: Avoid msg.sender-derived roles in new initializers; add access control and coordinate immediate post-upgrade initialization.",
+        "final_conclusion": "Status: Conditional\n\nEvidence: BeaconProxy (8).sol; UpgradeableBeacon (8).sol",
+        "contracts_involved": [
+          "BeaconProxy (8).sol",
+          "UpgradeableBeacon (8).sol"
+        ]
       }
     },
     {
-      "id": "TUP-IMPL-BACKDOOR-TAKEOVER",
       "source": "cleaned",
       "details": {
-        "title": "Implementation-level backdoor can write ERC-1967 slots via public functions",
         "description": "If a malicious implementation exposes public functions that write to EIP-1967 slots (or reuse admin op selectors), any user can call them via the proxy and seize admin/implementation control.",
         "severity": "Critical",
-        "status": "Conditional",
-        "evidence": [
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 88
-          }
-        ],
-        "recommendation": "Forbid any implementation function from writing EIP-1967 slots; audit selectors to avoid clashes with admin ops."
+        "blue_team_argument": "Recommendation: Forbid any implementation function from writing EIP-1967 slots; audit selectors to avoid clashes with admin ops.",
+        "final_conclusion": "Status: Conditional\n\nEvidence: TransparentUpgradeableProxy (8).sol",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy (8).sol"
+        ]
       }
     },
     {
-      "id": "PROXYADMIN-READ-SPOOFING",
       "source": "cleaned",
       "details": {
-        "title": "ProxyAdmin read helpers can be spoofed when not admin",
         "description": "getProxyImplementation/getProxyAdmin use staticcall to the proxy. When ProxyAdmin is not the admin, the proxy forwards the call to the implementation, which can return attacker-chosen values, misleading monitoring.",
         "severity": "Medium",
-        "status": "Valid",
-        "evidence": [
-          {
-            "file": "ProxyAdmin (8).sol",
-            "line": 21
-          },
-          {
-            "file": "ProxyAdmin (8).sol",
-            "line": 24
-          },
-          {
-            "file": "ProxyAdmin (8).sol",
-            "line": 36
-          },
-          {
-            "file": "ProxyAdmin (8).sol",
-            "line": 39
-          },
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 88
-          }
-        ],
-        "recommendation": "Read EIP-1967 slots directly and alert on AdminChanged/Upgraded events; don't rely solely on ProxyAdmin helpers."
+        "blue_team_argument": "Recommendation: Read EIP-1967 slots directly and alert on AdminChanged/Upgraded events; don't rely solely on ProxyAdmin helpers.",
+        "final_conclusion": "Status: Valid\n\nEvidence: ProxyAdmin (8).sol; ProxyAdmin (8).sol; ProxyAdmin (8).sol; ProxyAdmin (8).sol; TransparentUpgradeableProxy (8).sol",
+        "contracts_involved": [
+          "ProxyAdmin (8).sol",
+          "TransparentUpgradeableProxy (8).sol"
+        ]
       }
     },
     {
-      "id": "PAUSABLE-DOES-NOT-BLOCK-ADMIN",
       "source": "cleaned",
       "details": {
-        "title": "Pause in implementation doesn't block proxy admin operations",
         "description": "Transparent proxy admin path remains callable regardless of Pausable state in the implementation, allowing upgrades while paused.",
         "severity": "Medium",
-        "status": "Valid",
-        "evidence": [
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 88
-          }
-        ],
-        "recommendation": "Document that pause doesn't block upgrades; consider upgrade guardians or time locks."
+        "blue_team_argument": "Recommendation: Document that pause doesn't block upgrades; consider upgrade guardians or time locks.",
+        "final_conclusion": "Status: Valid\n\nEvidence: TransparentUpgradeableProxy (8).sol",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy (8).sol"
+        ]
       }
     },
     {
-      "id": "CVE-2023-30541-NOT-APPLICABLE",
       "source": "cleaned",
       "details": {
-        "title": "CVE-2023-30541 (selector clash) is not applicable",
         "description": "The repository includes TransparentUpgradeableProxy last updated v4.8.3, which contains the patch for historical selector-clash issues.",
-        "severity": "Informational",
-        "status": "NotApplicable",
-        "evidence": [
-          {
-            "file": "TransparentUpgradeableProxy (8).sol",
-            "line": 1
-          }
-        ],
-        "recommendation": "None."
+        "severity": "Info",
+        "blue_team_argument": "Recommendation: None.",
+        "final_conclusion": "Status: NotApplicable\n\nEvidence: TransparentUpgradeableProxy (8).sol",
+        "contracts_involved": [
+          "TransparentUpgradeableProxy (8).sol"
+        ]
       }
     }
   ],
